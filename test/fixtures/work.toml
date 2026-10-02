@@ -1,0 +1,6 @@
+[data]
+    work = true
+    workEmail = "work@example.com"
+    name = "George Haws"
+    personalEmail = "geehaws@gmail.com"
+    personalOwners = ["george-elliott"]
