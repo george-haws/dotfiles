@@ -115,4 +115,29 @@ check_eq "gh shim: outside a repo -> default, no git noise" "$(cd "$tmp" && ghw 
 check_eq "gh shim: owner/ argument -> gh-personal" "$(cd "$tmp" && ghw repo clone george-elliott/thing)" "GH_CONFIG_DIR=$W/.config/gh-personal args=repo clone george-elliott/thing"
 check_eq "gh shim: -R owner/repo -> gh-personal" "$(cd "$tmp" && ghw pr list -R George-Elliott/thing)" "GH_CONFIG_DIR=$W/.config/gh-personal args=pr list -R George-Elliott/thing"
 
+# Task 5: zsh
+check_fgrep "zshenv sets ZDOTDIR" "$P/.zshenv" 'export ZDOTDIR="$HOME/.config/zsh"'
+for f in .zshrc path.zsh env.zsh options.zsh aliases.zsh git.zsh nvm.zsh prompt.zsh completion.zsh; do
+  check_file "$P/.config/zsh/$f"
+  if zsh -n "$P/.config/zsh/$f" 2>/dev/null; then pass "zsh -n $f"; else fail "zsh -n $f: syntax error"; fi
+done
+for f in c _c extract gf _git-rm; do check_file "$P/.config/zsh/functions/$f"; done
+check_nofile "$P/.config/zsh/functions/_brew"
+check_grep "zshrc: explicit order" "$P/.config/zsh/.zshrc" 'for f in path env options aliases git nvm prompt completion'
+check_grep "zshrc: localrc last" "$P/.config/zsh/.zshrc" 'source ~/.localrc'
+check_nogrep "aliases: no gulp/ws/mstart/chc" "$P/.config/zsh/aliases.zsh" 'gulp|WebStorm|memcached|cache_classes'
+check_grep "aliases: pubkey uses ed25519" "$P/.config/zsh/aliases.zsh" 'id_ed25519.pub'
+check_nogrep "git aliases: no hub" "$P/.config/zsh/git.zsh" 'hub'
+check_eq "git aliases: gb defined once" "$(grep -c "^alias gb=" "$P/.config/zsh/git.zsh")" "1"
+check_grep "completion: ZDOTDIR dump" "$P/.config/zsh/completion.zsh" 'ZDOTDIR/.zcompdump'
+check_nogrep "nvm: no eager source" "$P/.config/zsh/nvm.zsh" '^source'
+# The shell must start clean with no Homebrew and nothing in PATH but system dirs.
+h="$tmp/zh"; mkdir -p "$h"; cp -R "$P/.config" "$h/"; cp "$P/.zshenv" "$h/"
+out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'echo started' 2>&1)
+check_eq "zsh: starts with no Homebrew" "$out" "started"
+out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'print -l $path | head -3 | tr "\n" " "' 2>&1)
+check_eq "zsh: path order" "$out" "$h/.local/bin /opt/homebrew/bin /opt/homebrew/sbin "
+out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'whence -w node yarn corepack extract c | tr "\n" " "' 2>&1)
+check_eq "zsh: lazy stubs and autoloads defined" "$out" "node: function yarn: function corepack: function extract: function c: function "
+
 finish

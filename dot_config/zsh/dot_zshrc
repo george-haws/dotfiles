@@ -1,0 +1,8 @@
+# Order matters. Each file is sourced by name; nothing is globbed.
+for f in path env options aliases git nvm prompt completion; do
+  source "$ZDOTDIR/$f.zsh"
+done
+unset f
+
+# Secrets and machine-local settings stay out of the repo.
+[[ -f ~/.localrc ]] && source ~/.localrc
