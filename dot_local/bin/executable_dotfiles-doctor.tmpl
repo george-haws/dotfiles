@@ -1,0 +1,86 @@
+#!/bin/sh
+# Verifies the live machine: git identity by remote, SSH keys, gh account,
+# signing, PATH, shell startup, and chezmoi freshness. Exit 1 on any failure.
+set -u
+
+work={{ .work }}
+personal_email="{{ .personalEmail }}"
+work_email="{{ .workEmail }}"
+owner="{{ index .personalOwners 0 }}"
+fails=0
+pass() { printf '  [ OK ] %s\n' "$1"; }
+warn() { printf '  [WARN] %s\n' "$1"; }
+fail() { printf '  [FAIL] %s\n' "$1"; fails=$((fails + 1)); }
+check() { # desc actual expected
+  if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (got '$2', want '$3')"; fi
+}
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+if [ "$work" = true ]; then default_email="$work_email"; else default_email="$personal_email"; fi
+
+echo "git identity"
+git init -q "$tmp/none"
+check "no remote -> machine default" "$(git -C "$tmp/none" config user.email)" "$default_email"
+git init -q "$tmp/https"; git -C "$tmp/https" remote add origin "https://github.com/$owner/x.git"
+check "https personal remote -> personal email" "$(git -C "$tmp/https" config user.email)" "$personal_email"
+check "https personal remote -> ssh push url" "$(git -C "$tmp/https" remote get-url --push origin)" "git@github.com:$owner/x.git"
+check "https personal remote -> https fetch url" "$(git -C "$tmp/https" remote get-url origin)" "https://github.com/$owner/x.git"
+check "~/.dotfiles -> personal email" "$(git -C "$HOME/.dotfiles" config user.email)" "$personal_email"
+workrepo=""
+if [ "$work" = true ]; then
+  check "https personal remote -> personal key" "$(git -C "$tmp/https" config user.signingkey)" "~/.ssh/id_ed25519_personal.pub"
+  for d in "$HOME"/src/*/; do
+    [ -d "$d/.git" ] || continue
+    case "$(git -C "$d" remote get-url origin 2>/dev/null)" in *"/$owner/"*|*":$owner/"*) continue;; esac
+    workrepo="$d"; break
+  done
+  if [ -n "$workrepo" ]; then
+    check "$workrepo -> work email" "$(git -C "$workrepo" config user.email)" "$work_email"
+    check "$workrepo -> default key" "$(git -C "$workrepo" config user.signingkey)" "~/.ssh/id_ed25519.pub"
+  else
+    pass "no work repo under ~/src to check (skipped)"
+  fi
+fi
+
+echo "signing"
+git -C "$tmp/https" commit -q --allow-empty -m doctor 2>"$tmp/sign.err" \
+  && [ "$(git -C "$tmp/https" log -1 --format=%G?)" = "G" ] \
+  && pass "empty commit on a personal remote verifies" \
+  || fail "signed commit does not verify: $(tr '\n' ' ' < "$tmp/sign.err")"
+
+echo "ssh"
+ssh_user() { ssh -T -o BatchMode=yes -o IdentitiesOnly=yes -i "$1" git@github.com 2>&1 | sed -n 's/^Hi \([^!]*\)!.*/\1/p'; }
+u=$(ssh_user "$HOME/.ssh/id_ed25519")
+if [ "$work" = true ]; then
+  if [ -n "$u" ] && [ "$u" != "$owner" ]; then pass "default key -> work account ($u)"; else fail "default key -> '$u', want a work account"; fi
+  check "personal key -> $owner" "$(ssh_user "$HOME/.ssh/id_ed25519_personal")" "$owner"
+else
+  check "default key -> $owner" "$u" "$owner"
+fi
+
+echo "gh"
+gh_user() { gh auth status 2>&1 | sed -n 's/.*account \([^ ]*\) .*/\1/p' | head -1; }
+check "gh in ~/.dotfiles -> $owner" "$(cd "$HOME/.dotfiles" && gh_user)" "$owner"
+if [ "$work" = true ] && [ -n "$workrepo" ]; then
+  g=$(cd "$workrepo" && gh_user)
+  if [ -n "$g" ] && [ "$g" != "$owner" ]; then pass "gh in work repo -> work account ($g)"; else fail "gh in work repo -> '$g'"; fi
+fi
+
+echo "path"
+check "git resolves to Homebrew" "$(command -v git)" "/opt/homebrew/bin/git"
+case ":$PATH:" in *:./bin:*) fail "PATH contains ./bin" ;; *) pass "no ./bin in PATH" ;; esac
+dups=$(printf '%s\n' "$PATH" | tr ':' '\n' | sort | uniq -d | tr '\n' ' ')
+if [ -z "$dups" ]; then pass "no duplicate PATH entries"; else fail "duplicate PATH entries: $dups"; fi
+
+echo "startup"
+secs=$(zsh -c 'zmodload zsh/datetime; s=$EPOCHREALTIME; for i in 1 2 3 4 5; do zsh -i -c exit; done; printf "%.3f" $(( (EPOCHREALTIME - s) / 5 ))')
+if awk "BEGIN{exit !($secs < 0.3)}"; then pass "interactive shell starts in ${secs}s"; else fail "interactive shell takes ${secs}s, want < 0.3"; fi
+
+echo "chezmoi"
+latest=$(curl -fsS --max-time 3 https://api.github.com/repos/twpayne/chezmoi/releases/latest 2>/dev/null | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+current=$(chezmoi --version 2>/dev/null | sed -n 's/.*version v\{0,1\}\([0-9][0-9.]*\).*/\1/p')
+if [ -z "$latest" ]; then pass "version check skipped (offline)"
+elif [ "$latest" = "$current" ]; then pass "chezmoi $current is current"
+else warn "chezmoi $current installed, $latest available: run chezmoi upgrade"; fi
+
+echo
+if [ "$fails" -eq 0 ]; then echo "all checks passed"; else echo "$fails check(s) failed"; exit 1; fi

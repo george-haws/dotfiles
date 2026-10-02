@@ -205,4 +205,17 @@ check_grep "README: SSH clone rule for private personal repos" "$SRC/README.md" 
 check_nofile "$P/install.sh"
 check_nofile "$P/README.md"
 
+# Task 9: doctor
+for t in personal work; do
+  d="$tmp/$t/.local/bin/dotfiles-doctor"
+  check_file "$d"
+  [ -x "$d" ] && pass "doctor($t): executable" || fail "doctor($t): not executable"
+  sh -n "$d" 2>/dev/null && pass "doctor($t): sh -n" || fail "doctor($t): syntax"
+done
+check_grep "doctor(work): checks work email" "$W/.local/bin/dotfiles-doctor" 'work@example.com'
+check_nogrep "doctor(personal): no work email" "$P/.local/bin/dotfiles-doctor" 'work@example.com'
+check_fgrep "doctor: https personal remote case" "$W/.local/bin/dotfiles-doctor" 'https://github.com/$owner/x.git'
+check_grep "doctor: chezmoi version check" "$W/.local/bin/dotfiles-doctor" 'releases/latest'
+check_grep "doctor: version check is a warning" "$W/.local/bin/dotfiles-doctor" 'warn "chezmoi'
+
 finish
