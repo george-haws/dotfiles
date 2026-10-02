@@ -1,0 +1,65 @@
+#!/bin/sh
+#
+# Usage: git review [branch] [base] [difit options...]
+#
+# Fetch the latest base branch from origin, then open difit showing the
+# changes on <branch> relative to origin/<base> (merge-base diff, like a PR).
+#
+#   branch  defaults to the current HEAD. A name that only exists on origin
+#           is resolved as origin/<branch>.
+#   base    defaults to origin's HEAD branch, falling back to main, then master.
+#
+# Local branches are never checked out or moved; only origin/<base> is updated.
+
+set -e
+
+die() { echo "git-review: $*" >&2; exit 1; }
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || die "not inside a git repository"
+
+branch=$1
+base=$2
+[ $# -gt 0 ] && shift
+[ $# -gt 0 ] && shift
+
+# Resolve the branch to review.
+if [ -z "$branch" ]; then
+  branch=$(git rev-parse --abbrev-ref HEAD)
+  [ "$branch" = "HEAD" ] && die "detached HEAD; pass a branch name"
+elif ! git rev-parse --verify --quiet "$branch^{commit}" >/dev/null; then
+  if git rev-parse --verify --quiet "origin/$branch^{commit}" >/dev/null; then
+    branch="origin/$branch"
+  else
+    die "branch '$branch' not found locally or on origin"
+  fi
+fi
+
+# Resolve the base branch.
+if [ -z "$base" ]; then
+  base=$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')
+  if [ -z "$base" ]; then
+    for candidate in main master; do
+      if git rev-parse --verify --quiet "origin/$candidate^{commit}" >/dev/null; then
+        base=$candidate
+        break
+      fi
+    done
+  fi
+  [ -z "$base" ] && die "could not detect a base branch; pass one explicitly"
+fi
+
+echo "Fetching origin/$base..." >&2
+git fetch --quiet origin "$base" || die "fetch of origin/$base failed"
+
+if [ "$branch" = "$base" ] || [ "$branch" = "origin/$base" ]; then
+  die "branch and base are the same ('$base'); nothing to review"
+fi
+if [ "$(git rev-parse "$branch")" = "$(git rev-parse "origin/$base")" ]; then
+  die "'$branch' and 'origin/$base' point at the same commit"
+fi
+
+if command -v difit >/dev/null 2>&1; then
+  exec difit "$branch" "origin/$base" --merge-base "$@"
+else
+  exec npx difit "$branch" "origin/$base" --merge-base "$@"
+fi

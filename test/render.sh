@@ -140,4 +140,13 @@ check_eq "zsh: path order" "$out" "$h/.local/bin /opt/homebrew/bin /opt/homebrew
 out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'whence -w node yarn corepack extract c | tr "\n" " "' 2>&1)
 check_eq "zsh: lazy stubs and autoloads defined" "$out" "node: function yarn: function corepack: function extract: function c: function "
 
+# Task 6: bin and vimrc
+for s in git-all git-amend git-copy-branch-name git-credit git-delete-local-merged git-nuke git-promote git-rank-contributors git-review git-track git-undo git-unpushed git-unpushed-stat git-up git-wtf e headers todo macos-defaults; do
+  if [ -x "$P/.local/bin/$s" ]; then pass "bin: $s executable"; else fail "bin: $s missing or not executable"; fi
+done
+check_nofile "$P/.local/bin/dot"
+check_nofile "$P/.local/bin/gitio"
+check_grep "git-delete-local-merged keeps main" "$P/.local/bin/git-delete-local-merged" "main"
+check_file "$P/.vimrc"
+
 finish
