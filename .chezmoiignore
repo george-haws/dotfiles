@@ -1,0 +1,9 @@
+README.md
+LICENSE.md
+install.sh
+docs
+test
+{{ if not .work }}
+.config/git/personal
+.local/bin/gh
+{{ end }}

@@ -32,4 +32,23 @@ W="$tmp/work"
 
 check_file "$P/.gitconfig"
 
+# Task 2: ignore rules and config template
+check_nofile "$P/README.md"
+check_nofile "$P/install.sh"
+check_nofile "$P/docs"
+check_nofile "$P/test"
+check_nofile "$P/LICENSE.md"
+check_nofile "$P/.config/git/personal"
+check_nofile "$P/.local/bin/gh"
+cfg=$(chezmoi --config "$SRC/test/fixtures/empty.toml" --source "$SRC" --persistent-state "$tmp/cfg.boltdb" \
+      execute-template --init --promptBool "Is this a work machine=true" \
+      --promptString "Work git email=work@example.com" < "$SRC/.chezmoi.toml.tmpl")
+check_eq "config: work=true renders" "$(printf '%s\n' "$cfg" | grep -c 'work = true')" "1"
+check_eq "config: workEmail quoted" "$(printf '%s\n' "$cfg" | grep -c 'workEmail = "work@example.com"')" "1"
+check_eq "config: sourceDir set" "$(printf '%s\n' "$cfg" | grep -c 'sourceDir = ".*/.dotfiles"')" "1"
+cfg=$(chezmoi --config "$SRC/test/fixtures/empty.toml" --source "$SRC" --persistent-state "$tmp/cfg.boltdb" \
+      execute-template --init --promptBool "Is this a work machine=false" < "$SRC/.chezmoi.toml.tmpl")
+check_eq "config: work=false renders" "$(printf '%s\n' "$cfg" | grep -c 'work = false')" "1"
+check_eq "config: workEmail empty on personal" "$(printf '%s\n' "$cfg" | grep -c 'workEmail = ""')" "1"
+
 finish

@@ -1,0 +1,13 @@
+{{- $work := promptBoolOnce . "work" "Is this a work machine" false -}}
+{{- $workEmail := "" -}}
+{{- if $work -}}
+{{-   $workEmail = promptStringOnce . "workEmail" "Work git email" -}}
+{{- end -}}
+sourceDir = {{ joinPath .chezmoi.homeDir ".dotfiles" | quote }}
+
+[data]
+    work = {{ $work }}
+    workEmail = {{ $workEmail | quote }}
+    name = "George Haws"
+    personalEmail = "geehaws@gmail.com"
+    personalOwners = ["george-elliott"]

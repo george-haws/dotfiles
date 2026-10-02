@@ -4,3 +4,6 @@
     name = "George Haws"
     personalEmail = "geehaws@gmail.com"
     personalOwners = ["george-elliott"]
+
+[warnings]
+    configFileTemplateHasChanged = false
