@@ -1,2 +1,63 @@
 [user]
     name = {{ .name }}
+    email = {{ if .work }}{{ .workEmail }}{{ else }}{{ .personalEmail }}{{ end }}
+    signingkey = ~/.ssh/id_ed25519.pub
+[core]
+    sshCommand = ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o AddKeysToAgent=yes -o IgnoreUnknown=UseKeychain -o UseKeychain=yes
+    excludesfile = ~/.config/git/ignore
+    editor = vim
+[gpg]
+    format = ssh
+[gpg "ssh"]
+    allowedSignersFile = ~/.config/git/allowed_signers
+[commit]
+    gpgsign = true
+[credential]
+    helper = osxkeychain
+[url "git@github.com:"]
+    pushInsteadOf = https://github.com/
+[pull]
+    rebase = true
+[fetch]
+    prune = true
+[rerere]
+    enabled = true
+[init]
+    defaultBranch = main
+[push]
+    default = simple
+[alias]
+    co = checkout
+    promote = !git-promote
+    wtf = !git-wtf
+    rank-contributors = !git-rank-contributors
+    count = !git shortlog -sn
+[color]
+    diff = auto
+    status = auto
+    branch = auto
+    ui = true
+[apply]
+    whitespace = nowarn
+[mergetool]
+    keepBackup = false
+[difftool]
+    prompt = false
+[help]
+    autocorrect = 1
+[filter "lfs"]
+    process = git-lfs filter-process
+    required = true
+    clean = git-lfs clean -- %f
+    smudge = git-lfs smudge -- %f
+{{- if .work }}
+{{- range .personalOwners }}
+
+[includeIf "hasconfig:remote.*.url:https://github.com/{{ . }}/**"]
+    path = ~/.config/git/personal
+[includeIf "hasconfig:remote.*.url:git@github.com:{{ . }}/**"]
+    path = ~/.config/git/personal
+[includeIf "hasconfig:remote.*.url:ssh://git@github.com/{{ . }}/**"]
+    path = ~/.config/git/personal
+{{- end }}
+{{- end }}

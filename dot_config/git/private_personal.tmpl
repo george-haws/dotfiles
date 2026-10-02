@@ -1,0 +1,6 @@
+[user]
+    name = {{ .name }}
+    email = {{ .personalEmail }}
+    signingkey = ~/.ssh/id_ed25519_personal.pub
+[core]
+    sshCommand = ssh -i ~/.ssh/id_ed25519_personal -o IdentitiesOnly=yes -o AddKeysToAgent=yes -o IgnoreUnknown=UseKeychain -o UseKeychain=yes
