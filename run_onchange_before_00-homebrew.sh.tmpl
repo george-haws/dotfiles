@@ -1,0 +1,13 @@
+#!/bin/sh
+# Brewfile hash: {{ include "Brewfile" | sha256sum }}
+# Runs before chezmoi writes any file, so the Brewfile is read from the source
+# directory. The hash above makes chezmoi rerun this when the Brewfile changes.
+set -eu
+
+if ! command -v brew >/dev/null 2>&1 && [ ! -x /opt/homebrew/bin/brew ]; then
+  echo "Installing Homebrew. It will ask for your password for sudo."
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+eval "$(/opt/homebrew/bin/brew shellenv)"
+
+brew bundle --file "{{ .chezmoi.sourceDir }}/Brewfile"

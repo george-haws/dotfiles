@@ -1,0 +1,8 @@
+brew "coreutils"
+brew "gh"
+brew "git"
+brew "git-lfs"
+brew "go"
+brew "grc"
+brew "nvm"
+brew "vim"

@@ -149,4 +149,50 @@ check_nofile "$P/.local/bin/gitio"
 check_grep "git-delete-local-merged keeps main" "$P/.local/bin/git-delete-local-merged" "main"
 check_file "$P/.vimrc"
 
+# Task 7: Brewfile and scripts
+check_file "$P/Brewfile"
+for pkg in coreutils gh git git-lfs go grc nvm vim; do check_grep "Brewfile: $pkg" "$P/Brewfile" "brew \"$pkg\""; done
+check_nogrep "Brewfile: no chezmoi" "$P/Brewfile" 'chezmoi'
+brew_sh=$(render_tmpl work run_onchange_before_00-homebrew.sh.tmpl)
+check_eq "homebrew script: hash comment" "$(printf '%s\n' "$brew_sh" | grep -c '^# Brewfile hash: [0-9a-f]\{64\}$')" "1"
+check_eq "homebrew script: bundles from sourceDir" "$(printf '%s\n' "$brew_sh" | grep -c "brew bundle --file \"$SRC/Brewfile\"")" "1"
+check_eq "homebrew script: no lfs install" "$(printf '%s\n' "$brew_sh" | grep -c 'git lfs install')" "0"
+printf '%s\n' "$brew_sh" > "$tmp/brew.sh"; if sh -n "$tmp/brew.sh"; then pass "homebrew script: sh -n"; else fail "homebrew script: syntax"; fi
+keys_w=$(render_tmpl work run_once_before_10-ssh-keys.sh.tmpl)
+keys_p=$(render_tmpl personal run_once_before_10-ssh-keys.sh.tmpl)
+printf '%s\n' "$keys_w" > "$tmp/keys-w.sh"; printf '%s\n' "$keys_p" > "$tmp/keys-p.sh"
+sh -n "$tmp/keys-w.sh" && pass "keys script(work): sh -n" || fail "keys script(work): syntax"
+sh -n "$tmp/keys-p.sh" && pass "keys script(personal): sh -n" || fail "keys script(personal): syntax"
+check_grep "keys(work): generates personal key" "$tmp/keys-w.sh" 'id_ed25519_personal'
+check_nogrep "keys(personal): no personal key" "$tmp/keys-p.sh" 'id_ed25519_personal'
+check_nogrep "keys(personal): no gh-personal reminder" "$tmp/keys-p.sh" 'gh-personal'
+# Run the work script against a temp HOME with stubbed ssh-keygen/ssh-add.
+kh="$tmp/keyhome"; mkdir -p "$kh/.ssh" "$tmp/stubbin"
+cat > "$tmp/stubbin/ssh-keygen" <<'STUB'
+#!/bin/sh
+# -t ed25519 -C comment -f path  -> writes fake key pair
+# -y -f path                     -> prints fake pub for that key
+case "$1" in
+  -y) printf 'ssh-ed25519 REGEN %s\n' "$(cat "$3")" ;;
+  *) f=""; c=""; while [ $# -gt 0 ]; do case "$1" in -f) f=$2; shift;; -C) c=$2; shift;; esac; shift; done
+     printf 'PRIV-%s\n' "$(basename "$f")" > "$f"; printf 'ssh-ed25519 FAKE %s\n' "$c" > "$f.pub" ;;
+esac
+STUB
+printf '#!/bin/sh\nexit 0\n' > "$tmp/stubbin/ssh-add"
+chmod +x "$tmp/stubbin/ssh-keygen" "$tmp/stubbin/ssh-add"
+# Pre-existing default private key WITHOUT a .pub (review focus #5).
+printf 'PRIV-id_ed25519\n' > "$kh/.ssh/id_ed25519"
+out=$(HOME="$kh" PATH="$tmp/stubbin:$PATH" sh "$tmp/keys-w.sh" 2>&1); rc=$?
+check_eq "keys(work): runs clean" "$rc" "0"
+check_file "$kh/.ssh/id_ed25519.pub"
+check_grep "keys(work): regenerated missing pub" "$kh/.ssh/id_ed25519.pub" 'REGEN'
+check_file "$kh/.ssh/id_ed25519_personal"
+check_file "$kh/.config/git/allowed_signers"
+check_eq "allowed_signers: two lines" "$(wc -l < "$kh/.config/git/allowed_signers" | tr -d ' ')" "2"
+check_grep "allowed_signers: work line" "$kh/.config/git/allowed_signers" '^work@example.com ssh-ed25519 REGEN'
+check_grep "allowed_signers: personal line" "$kh/.config/git/allowed_signers" '^geehaws@gmail.com ssh-ed25519 FAKE geehaws@gmail.com'
+check_eq "keys(work): prints new pubkey once" "$(printf '%s\n' "$out" | grep -c 'NEW KEY')" "1"
+out2=$(HOME="$kh" PATH="$tmp/stubbin:$PATH" sh "$tmp/keys-w.sh" 2>&1)
+check_eq "keys(work): idempotent, no new keys second run" "$(printf '%s\n' "$out2" | grep -c 'NEW KEY')" "0"
+
 finish

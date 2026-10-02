@@ -1,0 +1,43 @@
+#!/bin/sh
+# Generates per-machine SSH keys, loads them into the keychain agent, and writes
+# the allowed_signers file git uses to verify SSH signatures. Idempotent.
+set -eu
+
+default_email="{{ if .work }}{{ .workEmail }}{{ else }}{{ .personalEmail }}{{ end }}"
+mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+
+ensure_key() { # path comment
+  if [ ! -f "$1" ]; then
+    ssh-keygen -t ed25519 -C "$2" -f "$1"
+    echo
+    echo "NEW KEY $1.pub. Add it to GitHub twice: as an authentication key and as a signing key."
+    cat "$1.pub"
+    echo
+  elif [ ! -f "$1.pub" ]; then
+    ssh-keygen -y -f "$1" > "$1.pub"
+  fi
+}
+
+ensure_key "$HOME/.ssh/id_ed25519" "$default_email"
+{{- if .work }}
+ensure_key "$HOME/.ssh/id_ed25519_personal" "{{ .personalEmail }}"
+{{- end }}
+
+for k in "$HOME/.ssh/id_ed25519"{{ if .work }} "$HOME/.ssh/id_ed25519_personal"{{ end }}; do
+  [ -f "$k" ] && ssh-add --apple-use-keychain "$k" >/dev/null 2>&1 || true
+done
+
+mkdir -p "$HOME/.config/git"
+{
+{{- if .work }}
+  printf '%s %s\n' "{{ .workEmail }}" "$(cat "$HOME/.ssh/id_ed25519.pub")"
+  printf '%s %s\n' "{{ .personalEmail }}" "$(cat "$HOME/.ssh/id_ed25519_personal.pub")"
+{{- else }}
+  printf '%s %s\n' "{{ .personalEmail }}" "$(cat "$HOME/.ssh/id_ed25519.pub")"
+{{- end }}
+} > "$HOME/.config/git/allowed_signers"
+{{- if .work }}
+
+echo "Reminder (once per work machine, from ~/.dotfiles):"
+echo "  GH_CONFIG_DIR=\$HOME/.config/gh-personal gh auth login"
+{{- end }}
