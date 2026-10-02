@@ -195,4 +195,14 @@ check_eq "keys(work): prints new pubkey once" "$(printf '%s\n' "$out" | grep -c 
 out2=$(HOME="$kh" PATH="$tmp/stubbin:$PATH" sh "$tmp/keys-w.sh" 2>&1)
 check_eq "keys(work): idempotent, no new keys second run" "$(printf '%s\n' "$out2" | grep -c 'NEW KEY')" "0"
 
+# Task 8: install.sh and README
+if sh -n "$SRC/install.sh"; then pass "install.sh: sh -n"; else fail "install.sh: syntax"; fi
+check_grep "install.sh: official installer to ~/.local/bin" "$SRC/install.sh" 'get.chezmoi.io'
+check_fgrep "install.sh: init with source" "$SRC/install.sh" 'init --source "$HOME/.dotfiles" --apply george-elliott'
+check_fgrep "README: one-liner uses sh -c" "$SRC/README.md" 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-elliott/dotfiles/master/install.sh)"'
+check_grep "README: chezmoi upgrade reminder" "$SRC/README.md" 'chezmoi upgrade'
+check_grep "README: SSH clone rule for private personal repos" "$SRC/README.md" 'private personal'
+check_nofile "$P/install.sh"
+check_nofile "$P/README.md"
+
 finish
