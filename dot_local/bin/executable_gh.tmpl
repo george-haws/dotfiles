@@ -1,0 +1,28 @@
+#!/bin/sh
+# gh shim, rendered on work machines only. Picks the gh account by the repo's
+# remote owner, or by an owner/repo argument. Default is the work account.
+# Escape hatch: GH_CONFIG_DIR=~/.config/gh-personal gh ...
+real_gh="${DOTFILES_REAL_GH:-/opt/homebrew/bin/gh}"
+personal_dir="$HOME/.config/gh-personal"
+owners="{{ join " " .personalOwners }}"
+
+lower() { printf '%s' "$1" | tr 'A-Z' 'a-z'; }
+
+url=$(lower "$(git remote get-url origin 2>/dev/null || true)")
+personal=0
+for owner in $owners; do
+  owner=$(lower "$owner")
+  case "$url" in
+    *github.com/"$owner"/*|*github.com:"$owner"/*) personal=1 ;;
+  esac
+  for arg in "$@"; do
+    case "$(lower "$arg")" in
+      "$owner"/*) personal=1 ;;
+    esac
+  done
+done
+
+if [ "$personal" = 1 ] && [ -z "${GH_CONFIG_DIR:-}" ]; then
+  GH_CONFIG_DIR="$personal_dir" exec "$real_gh" "$@"
+fi
+exec "$real_gh" "$@"
