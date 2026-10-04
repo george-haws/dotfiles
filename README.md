@@ -5,12 +5,12 @@ Managed with [chezmoi](https://chezmoi.io). Source lives at `~/.dotfiles`.
 ## Fresh machine
 
 ```
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-elliott/dotfiles/master/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-haws/dotfiles/master/install.sh)"
 ```
 
 You are asked once whether this is a work machine and, if so, for the work email. Answers are stored in `~/.config/chezmoi/chezmoi.toml` and never committed. The script installs Command Line Tools and chezmoi, then chezmoi installs Homebrew, the Brewfile, and the dotfiles. It prints any new SSH public key; add it to GitHub as both an authentication key and a signing key.
 
-By hand, the same thing is three steps: `xcode-select --install`, `sh -c "$(curl -fsLS get.chezmoi.io)" -- -b ~/.local/bin`, then `~/.local/bin/chezmoi init --source ~/.dotfiles --apply george-elliott`.
+By hand, the same thing is three steps: `xcode-select --install`, `sh -c "$(curl -fsLS get.chezmoi.io)" -- -b ~/.local/bin`, then `~/.local/bin/chezmoi init --source ~/.dotfiles --apply george-haws`.
 
 ## How identity works
 

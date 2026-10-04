@@ -24,7 +24,7 @@ Identity follows the repository's remote URL, not its directory. `~/src` holds w
 | Profile selection | `includeIf "hasconfig:remote.*.url:<glob>"`, matched on the remote URL. Verified on git 2.39 to apply during `git clone`, inside existing repos, and with `url.insteadOf` inside the included file. |
 | Default on the work machine | Work. Personal applies only to remotes under the personal owner list. A fresh `git init` with no remote is work. |
 | Default on the personal machine | Personal. No include renders. |
-| Source directory | `~/.dotfiles`, a new repo with fresh history, pushed to `george-elliott/dotfiles`. The old checkout moves to `~/.dotfiles-legacy` and the old GitHub repo is renamed `dotfiles-legacy` by hand. Recorded as `sourceDir` in the generated chezmoi config. |
+| Source directory | `~/.dotfiles`, a new repo with fresh history, pushed to `george-haws/dotfiles`. The old checkout moves to `~/.dotfiles-legacy` and the old GitHub repo is renamed `dotfiles-legacy` by hand. Recorded as `sourceDir` in the generated chezmoi config. |
 | gh selection | A `gh` shim script in `~/.local/bin`, rendered on the work machine only. |
 | chezmoi install | The binary in `~/.local/bin` from the official installer is canonical, updated with `chezmoi upgrade`. It is not in the Brewfile. |
 | Personal name and email | Hardcoded in the config template. Both already appear in the public commit history, so nothing new is exposed. |
@@ -50,7 +50,7 @@ sourceDir = "~/.dotfiles"
     workEmail = <answer or "">
     name = "George Haws"
     personalEmail = "geehaws@gmail.com"
-    personalOwners = ["george-elliott"]
+    personalOwners = ["george-haws", "george-elliott"]
 ```
 
 `name` is the `user.name` for both profiles. `personalOwners` lists GitHub users and orgs whose repos are personal. Adding an org is a one-line commit.
@@ -225,7 +225,7 @@ Startup target: an interactive shell under 0.3 seconds.
 `install.sh` at the repo root is the one command for a fresh machine:
 
 ```
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-elliott/dotfiles/master/install.sh)"
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-haws/dotfiles/master/install.sh)"
 ```
 
 The `sh -c "$(...)"` form matters: the script's stdin stays the terminal, so the chezmoi prompts and `ssh-keygen` can read answers. Piping curl into sh would feed them EOF. The URL names `master` because that is this repo's branch; `init.defaultBranch = main` applies only to new repos.
@@ -234,7 +234,7 @@ It does three things, skipping each if already done:
 
 1. If `git` is missing, run `xcode-select --install` and wait for it.
 2. Install chezmoi to `~/.local/bin` with `sh -c "$(curl -fsLS get.chezmoi.io)" -- -b ~/.local/bin`.
-3. Run `~/.local/bin/chezmoi init --source ~/.dotfiles --apply george-elliott`. The clone uses HTTPS because no gitconfig exists yet; after apply, the `url.insteadOf` rewrite moves pushes to SSH.
+3. Run `~/.local/bin/chezmoi init --source ~/.dotfiles --apply george-haws`. The clone uses HTTPS because no gitconfig exists yet; after apply, the `url.insteadOf` rewrite moves pushes to SSH.
 
 The README documents the same three steps by hand for anyone who will not pipe curl into sh.
 

@@ -49,6 +49,7 @@ check_eq "config: sourceDir set" "$(printf '%s\n' "$cfg" | grep -c 'sourceDir = 
 cfg=$(chezmoi --config "$SRC/test/fixtures/empty.toml" --source "$SRC" --persistent-state "$tmp/cfg.boltdb" \
       execute-template --init --promptBool "Is this a work machine=false" < "$SRC/.chezmoi.toml.tmpl")
 check_eq "config: work=false renders" "$(printf '%s\n' "$cfg" | grep -c 'work = false')" "1"
+check_fgrep "config template: owners list" "$SRC/.chezmoi.toml.tmpl" 'personalOwners = ["george-haws", "george-elliott"]'
 check_eq "config: workEmail empty on personal" "$(printf '%s\n' "$cfg" | grep -c 'workEmail = ""')" "1"
 
 # Task 3: git identity
@@ -65,7 +66,8 @@ check_file "$P/.config/git/ignore"
 check_grep "gitconfig: allowedSignersFile" "$P/.gitconfig" 'allowedSignersFile = ~/.config/git/allowed_signers'
 
 check_grep "work gitconfig: work email" "$W/.gitconfig" 'email = work@example.com'
-check_eq "work gitconfig: 3 hasconfig includes per owner" "$(grep -c 'includeIf "hasconfig:remote\.\*\.url:' "$W/.gitconfig")" "3"
+check_eq "work gitconfig: 3 hasconfig includes per owner (2 owners)" "$(grep -c 'includeIf "hasconfig:remote\.\*\.url:' "$W/.gitconfig")" "6"
+check_grep "work gitconfig: https pattern, current owner" "$W/.gitconfig" 'hasconfig:remote.\*.url:https://github.com/george-haws/\*\*'
 check_grep "work gitconfig: https pattern" "$W/.gitconfig" 'hasconfig:remote.\*.url:https://github.com/george-elliott/\*\*'
 check_grep "work gitconfig: scp pattern" "$W/.gitconfig" 'hasconfig:remote.\*.url:git@github.com:george-elliott/\*\*'
 check_grep "work gitconfig: ssh pattern" "$W/.gitconfig" 'hasconfig:remote.\*.url:ssh://git@github.com/george-elliott/\*\*'
@@ -88,6 +90,8 @@ check_eq "git(work): https personal remote -> personal email" "$(gitw -C "$r/htt
 check_eq "git(work): https personal remote -> personal key" "$(gitw -C "$r/https" config user.signingkey)" "~/.ssh/id_ed25519_personal.pub"
 check_eq "git(work): push url rewritten to ssh" "$(gitw -C "$r/https" remote get-url --push origin)" "git@github.com:george-elliott/x.git"
 check_eq "git(work): fetch url stays https" "$(gitw -C "$r/https" remote get-url origin)" "https://github.com/george-elliott/x.git"
+gitw init -q "$r/haws"; gitw -C "$r/haws" remote add origin https://github.com/george-haws/x.git
+check_eq "git(work): current-owner remote -> personal email" "$(gitw -C "$r/haws" config user.email)" "geehaws@gmail.com"
 gitw init -q "$r/scp"; gitw -C "$r/scp" remote add origin git@github.com:george-elliott/x.git
 check_eq "git(work): scp personal remote -> personal email" "$(gitw -C "$r/scp" config user.email)" "geehaws@gmail.com"
 gitw init -q "$r/work"; gitw -C "$r/work" remote add origin https://github.com/example-org/x.git
@@ -104,10 +108,11 @@ check_eq "git(personal): any remote -> personal email" "$(gitp -C "$r/p" config 
 # Task 4: gh shim
 check_file "$W/.local/bin/gh"
 if [ -x "$W/.local/bin/gh" ]; then pass "gh shim executable"; else fail "gh shim not executable"; fi
-check_grep "gh shim: mentions owner" "$W/.local/bin/gh" 'george-elliott'
+check_grep "gh shim: mentions both owners" "$W/.local/bin/gh" 'george-haws george-elliott'
 stub="$tmp/stub-gh"; printf '#!/bin/sh\necho "GH_CONFIG_DIR=${GH_CONFIG_DIR:-unset} args=$*"\n' > "$stub"; chmod +x "$stub"
 ghw() { DOTFILES_REAL_GH="$stub" HOME="$W" "$W/.local/bin/gh" "$@"; }
 check_eq "gh shim: personal remote -> gh-personal" "$(cd "$r/https" && ghw pr list)" "GH_CONFIG_DIR=$W/.config/gh-personal args=pr list"
+check_eq "gh shim: current-owner remote -> gh-personal" "$(cd "$r/haws" && ghw pr list)" "GH_CONFIG_DIR=$W/.config/gh-personal args=pr list"
 check_eq "gh shim: uppercase owner remote -> gh-personal" "$(cd "$r/upper" && ghw pr list)" "GH_CONFIG_DIR=$W/.config/gh-personal args=pr list"
 check_eq "gh shim: work remote -> default" "$(cd "$r/work" && ghw pr list)" "GH_CONFIG_DIR=unset args=pr list"
 check_eq "gh shim: no remote -> default" "$(cd "$r/none" && ghw auth status)" "GH_CONFIG_DIR=unset args=auth status"
@@ -198,8 +203,8 @@ check_eq "keys(work): idempotent, no new keys second run" "$(printf '%s\n' "$out
 # Task 8: install.sh and README
 if sh -n "$SRC/install.sh"; then pass "install.sh: sh -n"; else fail "install.sh: syntax"; fi
 check_grep "install.sh: official installer to ~/.local/bin" "$SRC/install.sh" 'get.chezmoi.io'
-check_fgrep "install.sh: init with source" "$SRC/install.sh" 'init --source "$HOME/.dotfiles" --apply george-elliott'
-check_fgrep "README: one-liner uses sh -c" "$SRC/README.md" 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-elliott/dotfiles/master/install.sh)"'
+check_fgrep "install.sh: init with source" "$SRC/install.sh" 'init --source "$HOME/.dotfiles" --apply george-haws'
+check_fgrep "README: one-liner uses sh -c" "$SRC/README.md" 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-haws/dotfiles/master/install.sh)"'
 check_grep "README: chezmoi upgrade reminder" "$SRC/README.md" 'chezmoi upgrade'
 check_grep "README: SSH clone rule for private personal repos" "$SRC/README.md" 'private personal'
 check_nofile "$P/install.sh"

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Fresh-machine bootstrap. Run as:
-#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-elliott/dotfiles/master/install.sh)"
+#   sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-haws/dotfiles/master/install.sh)"
 # The sh -c "$(...)" form keeps stdin on the terminal so chezmoi can prompt.
 set -eu
 
@@ -15,4 +15,4 @@ if [ ! -x "$HOME/.local/bin/chezmoi" ]; then
   sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
 fi
 
-exec "$HOME/.local/bin/chezmoi" init --source "$HOME/.dotfiles" --apply george-elliott
+exec "$HOME/.local/bin/chezmoi" init --source "$HOME/.dotfiles" --apply george-haws
