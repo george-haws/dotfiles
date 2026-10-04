@@ -1,7 +1,7 @@
 # Dotfiles on chezmoi with remote-based GitHub identity
 
 Date: 2026-10-01
-Status: approved design, awaiting implementation plan
+Status: implemented 2026-10-04. The repo at `george-haws/dotfiles` is the result; this document records the design and its decisions.
 
 ## Goal
 
@@ -18,10 +18,10 @@ Identity follows the repository's remote URL, not its directory. `~/src` holds w
 
 | Question | Decision |
 |---|---|
-| Scope | Clean rewrite. Port only what is used, fix the known bugs, drop the dead weight listed in `HANDOFF.md`. |
+| Scope | Clean rewrite. Port only what is used, fix the known bugs, drop the dead weight catalogued in the legacy repo's handoff note. |
 | Private keys | Generated per machine by a run-once script. Never stored in the repo. No 1Password, no age. |
-| Git transport | Fetch stays HTTPS. A global `url.pushInsteadOf` moves pushes to `https://github.com/` onto SSH, so existing HTTPS clones keep working and tools that shell out to git for public dependencies are unaffected. Private personal repos must be cloned over SSH. |
-| Profile selection | `includeIf "hasconfig:remote.*.url:<glob>"`, matched on the remote URL. Verified on git 2.39 to apply during `git clone`, inside existing repos, and with `url.insteadOf` inside the included file. |
+| Git transport | A global `pushInsteadOf` sends pushes to `github.com` over SSH. Fetches keep their HTTPS URL, so existing clones and tools that fetch public dependencies are unaffected. Private personal repos must be cloned over SSH. |
+| Profile selection | `includeIf "hasconfig:remote.*.url:<glob>"`, matched on the remote URL. Verified on git 2.39 to apply during `git clone` and inside existing repos. |
 | Default on the work machine | Work. Personal applies only to remotes under the personal owner list. A fresh `git init` with no remote is work. |
 | Default on the personal machine | Personal. No include renders. |
 | Source directory | `~/.dotfiles`, a new repo with fresh history, pushed to `george-haws/dotfiles`. The old checkout moves to `~/.dotfiles-legacy` and the old GitHub repo is renamed `dotfiles-legacy` by hand. Recorded as `sourceDir` in the generated chezmoi config. |
@@ -85,11 +85,11 @@ Brewfile
 .local/bin/chezmoi           from install.sh
 ```
 
-`~/.local/bin` is first on PATH. That is what lets the `gh` shim and the `git-*` scripts win over Homebrew.
+`~/.local/bin` is first on PATH, so the `gh` shim and the `git-*` scripts win over Homebrew.
 
-Repo-side names follow chezmoi conventions: `dot_zshenv`, `dot_config/zsh/dot_zshrc`, `private_dot_config/git/personal.tmpl`, `dot_local/bin/executable_gh.tmpl`, and so on.
+Repo-side names follow chezmoi conventions: `dot_zshenv`, `dot_config/zsh/dot_zshrc`, `dot_config/git/private_personal.tmpl`, `dot_local/bin/executable_gh.tmpl`, and so on. The `private_` prefix sits on the file, not the directory, because chezmoi refuses two source directories for one target.
 
-Repo files chezmoi does not apply: `install.sh`, `README.md`, `LICENSE.md`, `HANDOFF.md`, `docs/`, `test/`. They are listed in `.chezmoiignore`. The same file holds a `{{ if not .work }}` block that ignores `.config/git/personal` and `.local/bin/gh`, so they never exist on a personal machine.
+Repo files chezmoi does not apply: `install.sh`, `README.md`, `LICENSE.md`, `docs/`, `test/`. They are listed in `.chezmoiignore`. The same file holds a `{{ if not .work }}` block that ignores `.config/git/personal` and `.local/bin/gh`, so they never exist on a personal machine.
 
 ### Kept from the legacy repo (`~/.dotfiles-legacy`)
 
@@ -153,7 +153,7 @@ On the work machine the template appends, after `[user]`, one include per URL fo
 
 The fourth form covers clone URLs that embed a username, which chezmoi's URL guessing and some tools produce. Wildmatch `*` does not cross `/`, so it matches only the username segment.
 
-`private_dot_config/git/personal.tmpl` carries only the override:
+`dot_config/git/private_personal.tmpl` carries only the override:
 
 ```ini
 [user]
@@ -168,7 +168,7 @@ Git forbids remote URLs inside a `hasconfig` include. This file declares none.
 
 Known limit: `hasconfig` matches if any remote matches. A work repo that also carries a remote under a personal owner, such as a fork pushed to the personal account, resolves to personal. Keep personal forks of work repos out of the personal account, or expect it.
 
-Known limit: on the work machine a repo created with `git init` commits as work until it gains a remote under a personal owner. Once the remote is added the include matches, the personal key is used, and the push succeeds. The earlier commits keep the work email and a signature from a key the personal account does not know, which GitHub shows as "Unverified". No error is raised anywhere. A global `core.hooksPath` tripwire was considered and rejected: work repos that use husky set a local `core.hooksPath`, and a local value overrides a global one, so the hook would be skipped exactly where it matters. The mitigation is habit: add the remote before the first commit, or amend.
+Known limit: on the work machine a repo created with `git init` commits as work until it gains a remote under a personal owner. Adding the remote switches later commits to the personal key, and the push succeeds, but the earlier commits keep the work email and a signature GitHub shows as "Unverified". Git raises no error. A global `core.hooksPath` tripwire would not help: three work repos set a local `core.hooksPath` for husky, and the local value wins, so the hook would be skipped exactly where it matters. Add the remote before the first commit, or amend.
 
 Transport limit: with `pushInsteadOf`, a private personal repo cloned over HTTPS fetches with the keychain's work token and fails. Clone private personal repos with their SSH URL. Public repos and all pushes are unaffected.
 
@@ -182,16 +182,18 @@ Transport limit: with `pushInsteadOf`, a private personal repo cloned over HTTPS
 4. `mkdir -p ~/.config/git`, then write `~/.config/git/allowed_signers` from the pubkeys that exist: one line per profile, `<email> <pubkey>`. The script writes this file rather than a template because templates render before the keys exist on a first apply.
 5. Print each newly generated pubkey with a reminder to add it to GitHub as both an authentication key and a signing key, and to run the personal gh login on a work machine.
 
-No `~/.ssh/config` is written. Each `sshCommand` passes `AddKeysToAgent=yes` and `UseKeychain=yes`, so a key not yet in the agent is loaded from the keychain on first use. `UseKeychain` is Apple-only, so `IgnoreUnknown=UseKeychain` precedes it; a Homebrew openssh would otherwise reject the whole command. `~/.ssh` stays unmanaged by chezmoi; `known_hosts` and company-provisioned files are untouched. `IdentitiesOnly=yes` in every `sshCommand` stops ssh from offering the agent's other keys, which is what would otherwise authenticate the wrong account.
+Each `sshCommand` passes `AddKeysToAgent=yes` and `UseKeychain=yes`, so ssh loads a key from the keychain on first use. `UseKeychain` is Apple-only, so `IgnoreUnknown=UseKeychain` precedes it; a Homebrew openssh would otherwise reject the whole command. No `~/.ssh/config` is needed.
 
-On a work machine the default key belongs to the work GitHub account only. No key moves between accounts.
+`IdentitiesOnly=yes` in every `sshCommand` stops ssh from offering the agent's other keys. Without it, GitHub authenticates you as whichever account owns the first key it accepts.
+
+chezmoi never manages `~/.ssh`. `known_hosts` and company-provisioned files are untouched.
 
 ## gh CLI
 
-`dot_local/bin/executable_gh.tmpl` renders a shim on the work machine only. `~/.local/bin` precedes Homebrew on PATH, so every program that resolves `gh` by name gets the shim, under any shell or none. The shim:
+`dot_local/bin/executable_gh.tmpl` renders a shim on the work machine only. `~/.local/bin` precedes Homebrew on PATH, in interactive shells and their children, so any program that resolves `gh` through that PATH gets the shim. A program launched outside zsh, by Finder or launchd, keeps its own PATH and bypasses it. The shim:
 
 1. Reads `git remote get-url origin`, ignoring errors.
-2. If the URL contains `github.com/<owner>/` or `github.com:<owner>/` for any personal owner, or any argument starts with `<owner>/`, exports `GH_CONFIG_DIR=$HOME/.config/gh-personal`. The argument check covers `gh repo clone george-elliott/thing` from outside any repo.
+2. If the URL contains `github.com/<owner>/` or `github.com:<owner>/` for any personal owner, or any argument starts with `<owner>/`, exports `GH_CONFIG_DIR=$HOME/.config/gh-personal`. The argument check covers `gh repo clone george-haws/thing` from outside any repo.
 3. Execs `/opt/homebrew/bin/gh` with the original arguments.
 
 Escape hatch for anything the shim misses: `GH_CONFIG_DIR=~/.config/gh-personal gh ...`.
@@ -215,7 +217,7 @@ Limit: a tool that hardcodes `/opt/homebrew/bin/gh` bypasses the shim. JetBrains
 | `options.zsh` | History settings, `setopt` lines, and key bindings from `zsh/config.zsh`. The `PS1` lines go, since `prompt.zsh` sets `PROMPT`, and the `newtab` binding goes, since nothing defines it. |
 | `aliases.zsh` | `system/aliases.zsh` and `zsh/aliases.zsh` merged. `ls` aliases guarded on `gls` existing. `chc`, `rmchc`, `fs`, `rbenv`, `ws`, and `mstart` removed: they are Rails, foreman, rbenv, WebStorm, and memcached aliases, none of which is installed. `pubkey` reads `id_ed25519.pub`. |
 | `git.zsh` | `git/aliases.zsh` without the `hub` block and the duplicate `gb`. |
-| `nvm.zsh` | Defines `nvm`, `node`, `npm`, `npx`, `yarn`, `pnpm`, `corepack` as stubs that unset themselves, source `$(brew --prefix nvm)/nvm.sh`, and re-invoke. `brew --prefix` result is cached in the file as `/opt/homebrew/opt/nvm`. |
+| `nvm.zsh` | Defines `nvm`, `node`, `npm`, `npx`, `yarn`, `pnpm`, `corepack` as stubs that unset themselves, source `/opt/homebrew/opt/nvm/nvm.sh`, and re-invoke. |
 | `prompt.zsh` | `zsh/prompt.zsh` with the `title` function from `zsh/window.zsh` folded in and the rbenv/rvm prompt segment removed. |
 | `completion.zsh` | `compinit` with `-C` unless `$ZDOTDIR/.zcompdump` is older than a day; then grc from `/opt/homebrew/etc/grc.zsh`. |
 | `functions/` | Added to `fpath`; each file autoloaded. |
@@ -236,13 +238,13 @@ The `sh -c "$(...)"` form matters: the script's stdin stays the terminal, so the
 
 It does three things, skipping each if already done:
 
-1. If `git` is missing, run `xcode-select --install` and wait for it.
+1. If the Command Line Tools are missing, launch `xcode-select --install` and exit, asking for a rerun once the installer finishes. The installer is a GUI dialog with no reliable completion signal to wait on.
 2. Install chezmoi to `~/.local/bin` with `sh -c "$(curl -fsLS get.chezmoi.io)" -- -b ~/.local/bin`.
-3. Run `~/.local/bin/chezmoi init --source ~/.dotfiles --apply --guess-repo-url=false https://github.com/george-haws/dotfiles.git`. The URL is explicit because chezmoi's guessed form, `https://<user>@github.com/...`, embeds a username. The clone uses HTTPS because no gitconfig exists yet; after apply, the `url.insteadOf` rewrite moves pushes to SSH.
+3. Run `~/.local/bin/chezmoi init --source ~/.dotfiles --apply --guess-repo-url=false https://github.com/george-haws/dotfiles.git`. The URL is explicit because chezmoi's guessed form, `https://<user>@github.com/...`, embeds a username. The clone uses HTTPS because no gitconfig exists yet; after apply, the `pushInsteadOf` rewrite sends pushes over SSH.
 
 The README documents the same three steps by hand for anyone who will not pipe curl into sh.
 
-`run_onchange_before_00-homebrew.sh.tmpl` installs Homebrew if `brew` is missing (with `NONINTERACTIVE=1`; it still asks for a sudo password) and runs `brew bundle --file {{ .chezmoi.sourceDir }}/Brewfile`. It does not run `git lfs install`: that command only writes the `filter "lfs"` section into the global gitconfig, and the template already carries it. It reads the Brewfile from the source directory because before-scripts run before chezmoi writes any file to `$HOME`. It carries a `# Brewfile hash: {{ include "Brewfile" | sha256sum }}` comment, so editing the Brewfile reruns it on the next apply. The Brewfile is the dependency list:
+`run_onchange_before_00-homebrew.sh.tmpl` installs Homebrew if `brew` is missing and runs `brew bundle` on the Brewfile. It reads the Brewfile from the source directory because before-scripts run before chezmoi writes any file to `$HOME`. A `# Brewfile hash: {{ include "Brewfile" | sha256sum }}` comment makes chezmoi rerun it whenever the Brewfile changes. The Homebrew installer runs with `NONINTERACTIVE=1` but still asks for a sudo password. The script skips `git lfs install`, which only writes the `filter "lfs"` section the gitconfig template already carries. The Brewfile is the dependency list:
 
 ```
 brew "coreutils"
@@ -299,11 +301,11 @@ Personal tree:
 - No file under the tree contains `work@example.com`.
 
 Work tree:
-- `.gitconfig` contains exactly three `hasconfig` includes per personal owner, all after `[user]`.
+- `.gitconfig` contains exactly four `hasconfig` includes per personal owner, all after `[user]`.
 - `.gitconfig` `user.email` is `work@example.com`.
 - `.config/git/personal` exists with mode 0600, contains the personal email and `id_ed25519_personal`, and has no `[remote` section.
 - `.local/bin/gh` is executable and mentions every personal owner.
 
-This tests the ignore rules, file modes, and the exact file set, not only template text.
+The suite also runs real git against the rendered trees, with `HOME` pointed at each tree so `~` in include paths resolves there, and runs the rendered scripts against stubbed `ssh-keygen` and `gh`. This tests the ignore rules, file modes, the exact file set, and identity resolution, not only template text.
 
-These assertions are written before the templates, and they are the first task of the implementation plan.
+Each assertion was written before the file it checks, and the test harness was the first task of the implementation plan.
