@@ -153,13 +153,10 @@ git-absorb needs no config. `git absorb --and-rebase` is the normal invocation.
 | `~/.config/starship.toml` | `dot_config/starship.toml` | Reproduces the current prompt: blank line, `in <cyan dir> on <branch> with unpushed`, newline, `› `. Branch is bold green when clean, bold red when dirty. ` with unpushed` appears in bold magenta when ahead of upstream. Everything else off except `nodejs`, `golang`, and `status` for non-zero exits. |
 | `~/.config/atuin/config.toml` | `dot_config/atuin/config.toml` | `auto_sync = false`, `update_check = false`, `search_mode = "fuzzy"`, `filter_mode = "global"`, `filter_mode_shell_up_key_binding = "directory"`, `style = "compact"`, `inline_height = 20`, `enter_accept = false`. |
 | `~/.claude/settings.json` | `dot_claude/settings.json` | The existing file plus the `statusLine` entry. Plain file, not a template; nothing in it differs by machine. |
-| `~/.claude/skills/domain-modeling/` | `dot_claude/skills/domain-modeling/` | Hand-written skill, three markdown files and one yaml. |
-| `~/.claude/skills/grilling/` | `dot_claude/skills/grilling/` | Hand-written skill, one markdown file and one yaml. |
-| `~/.claude/skills/resume-tailoring/`, `~/.claude/skills/stop-slop/` | `.chezmoiexternal.toml` | Third-party skills that are git clones today. Declared as chezmoi externals of type `git-repo`, pinned to their current remotes, refreshed every 168 hours. |
 | `~/.config/zed/settings.json` | `dot_config/zed/settings.json` | Plain file. |
 | `~/.local/bin/claude-statusline` | `dot_local/bin/executable_claude-statusline` | See the next section. |
 
-Not tracked, on purpose: `~/.claude/CLAUDE.md` and `~/.claude/keybindings.json` do not exist today and are added if they ever do. `~/.claude/skills/synced/` is managed by Claude's own cloud sync. `~/.claude/skills/.trash/` is Claude's. `~/.claude/skills/grill-with-docs` is a symlink into `~/.agents`, which is a separate tool's territory. Credentials, projects, sessions, history, shell snapshots, plugin caches, and telemetry under `~/.claude/` are machine-local or secret and never enter the repo.
+Not tracked, on purpose: `~/.claude/CLAUDE.md` and `~/.claude/keybindings.json` do not exist today and are added if they ever do. Nothing under `~/.claude/skills/` is tracked; see Future work. Credentials, projects, sessions, history, shell snapshots, plugin caches, and telemetry under `~/.claude/` are machine-local or secret and never enter the repo.
 
 chezmoi never removes files it does not manage, so adding `dot_claude/` to the source tree leaves everything else under `~/.claude/` alone.
 
@@ -205,17 +202,15 @@ New `dotfiles-doctor` checks:
 
 Additions to `test/render.sh`, for both the personal and work trees:
 
-- `.config/zsh/tools.zsh`, `.config/zsh/plugins.zsh`, `.config/starship.toml`, `.config/atuin/config.toml`, `.config/zed/settings.json`, `.claude/settings.json`, `.claude/skills/domain-modeling/SKILL.md`, `.claude/skills/grilling/SKILL.md`, and `.local/bin/claude-statusline` exist.
+- `.config/zsh/tools.zsh`, `.config/zsh/plugins.zsh`, `.config/starship.toml`, `.config/atuin/config.toml`, `.config/zed/settings.json`, `.claude/settings.json`, and `.local/bin/claude-statusline` exist.
 - `.local/bin/claude-statusline` is executable.
 - `.local/bin/headers` does not exist.
 - `.config/zsh/.zshrc` lists `plugins` last in its source order.
 - `.gitconfig` contains `pager = delta` and a `[difftool "difftastic"]` section.
 - `.config/atuin/config.toml` contains `auto_sync = false`.
 - `.claude/settings.json` parses with `jq` and `.statusLine.command` is `~/.local/bin/claude-statusline`.
-- No file under `.claude/` other than `settings.json` and the two skill directories is rendered.
+- `settings.json` is the only file rendered under `.claude/`.
 - The status line script, run against a temp git repo with one unpushed commit over a stubbed upstream, prints `x on main with unpushed`; against the same repo after pushing, prints `x on main`; against a non-repo directory, prints the directory name.
-
-Externals are excluded from the test render with `--exclude externals` so the suite stays offline.
 
 As before, each assertion is written before the file it checks.
 
@@ -232,5 +227,7 @@ As before, each assertion is written before the file it checks.
 Recorded here so the decisions are not lost. Each is its own changeset with its own spec.
 
 **mise for every runtime.** Replace nvm with mise for Node, move Go from Homebrew to mise, and let mise manage Python alongside uv. Removes `nvm.zsh`, `nvm`, `node`, and `yarn` from this repo and the Brewfile, adds `~/.config/mise/config.toml` with pinned global versions, and adds `eval "$(mise activate zsh)"` to `tools.zsh`. mise's `[env]` section takes the role direnv would have had. Decided in this design; deferred so that tool additions and runtime migration are not debugged together.
+
+**Claude Code skills.** `~/.claude/skills/` holds a mix today: two hand-written skills, two git clones of third-party skills, a folder Claude's cloud sync owns, and a symlink into another tool's skill store. Copying skill files into this repo was considered and rejected for now; how skills should be shared between machines is an open question, to be designed separately. Until then this repo tracks nothing under `~/.claude/skills/`.
 
 **jj.** Jujutsu works inside existing git repos and has a better model for conflicts, undo, and the working copy. Not adopted because it keeps its own identity and signing config, so the remote-based personal-or-work scheme would have to be duplicated and kept in step, and because it is still marked experimental. Worth a fresh look once it stabilises and once there is a known pattern for mirroring `includeIf` behaviour in its config.
