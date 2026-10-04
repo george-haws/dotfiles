@@ -138,7 +138,7 @@ Repo files chezmoi does not apply: `install.sh`, `README.md`, `LICENSE.md`, `HAN
 
 Also carried over: the `alias`, `color`, `apply`, `mergetool`, `difftool`, `help`, `push`, and `filter "lfs"` sections. Aliases that pointed at `$ZSH/bin` now call the script by name, since `~/.local/bin` is on PATH. The `hub` section is removed. The keychain credential helper stays, because HTTPS fetches of private work repos depend on the work token in the keychain.
 
-On the work machine the template appends, after `[user]`, one include per URL form per personal owner:
+On the work machine the template appends, after `[user]`, one include per URL form per personal owner, plus a `pushInsteadOf` per owner for the `https://<owner>@github.com/` prefix:
 
 ```ini
 [includeIf "hasconfig:remote.*.url:https://github.com/george-elliott/**"]
@@ -147,7 +147,11 @@ On the work machine the template appends, after `[user]`, one include per URL fo
     path = ~/.config/git/personal
 [includeIf "hasconfig:remote.*.url:ssh://git@github.com/george-elliott/**"]
     path = ~/.config/git/personal
+[includeIf "hasconfig:remote.*.url:https://*@github.com/george-elliott/**"]
+    path = ~/.config/git/personal
 ```
+
+The fourth form covers clone URLs that embed a username, which chezmoi's URL guessing and some tools produce. Wildmatch `*` does not cross `/`, so it matches only the username segment.
 
 `private_dot_config/git/personal.tmpl` carries only the override:
 
@@ -234,7 +238,7 @@ It does three things, skipping each if already done:
 
 1. If `git` is missing, run `xcode-select --install` and wait for it.
 2. Install chezmoi to `~/.local/bin` with `sh -c "$(curl -fsLS get.chezmoi.io)" -- -b ~/.local/bin`.
-3. Run `~/.local/bin/chezmoi init --source ~/.dotfiles --apply george-haws`. The clone uses HTTPS because no gitconfig exists yet; after apply, the `url.insteadOf` rewrite moves pushes to SSH.
+3. Run `~/.local/bin/chezmoi init --source ~/.dotfiles --apply --guess-repo-url=false https://github.com/george-haws/dotfiles.git`. The URL is explicit because chezmoi's guessed form, `https://<user>@github.com/...`, embeds a username. The clone uses HTTPS because no gitconfig exists yet; after apply, the `url.insteadOf` rewrite moves pushes to SSH.
 
 The README documents the same three steps by hand for anyone who will not pipe curl into sh.
 
