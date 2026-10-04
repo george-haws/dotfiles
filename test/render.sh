@@ -66,7 +66,7 @@ check_file "$P/.config/git/ignore"
 check_grep "gitconfig: allowedSignersFile" "$P/.gitconfig" 'allowedSignersFile = ~/.config/git/allowed_signers'
 
 check_grep "work gitconfig: work email" "$W/.gitconfig" 'email = work@example.com'
-check_eq "work gitconfig: 3 hasconfig includes per owner (2 owners)" "$(grep -c 'includeIf "hasconfig:remote\.\*\.url:' "$W/.gitconfig")" "6"
+check_eq "work gitconfig: 4 hasconfig includes per owner (2 owners)" "$(grep -c 'includeIf "hasconfig:remote\.\*\.url:' "$W/.gitconfig")" "8"
 check_grep "work gitconfig: https pattern, current owner" "$W/.gitconfig" 'hasconfig:remote.\*.url:https://github.com/george-haws/\*\*'
 check_grep "work gitconfig: https pattern" "$W/.gitconfig" 'hasconfig:remote.\*.url:https://github.com/george-elliott/\*\*'
 check_grep "work gitconfig: scp pattern" "$W/.gitconfig" 'hasconfig:remote.\*.url:git@github.com:george-elliott/\*\*'
@@ -92,6 +92,12 @@ check_eq "git(work): push url rewritten to ssh" "$(gitw -C "$r/https" remote get
 check_eq "git(work): fetch url stays https" "$(gitw -C "$r/https" remote get-url origin)" "https://github.com/george-elliott/x.git"
 gitw init -q "$r/haws"; gitw -C "$r/haws" remote add origin https://github.com/george-haws/x.git
 check_eq "git(work): current-owner remote -> personal email" "$(gitw -C "$r/haws" config user.email)" "geehaws@gmail.com"
+gitw init -q "$r/userat"; gitw -C "$r/userat" remote add origin https://george-haws@github.com/george-haws/dotfiles.git
+check_eq "git(work): user@ https remote -> personal email" "$(gitw -C "$r/userat" config user.email)" "geehaws@gmail.com"
+check_eq "git(work): user@ https remote -> personal key" "$(gitw -C "$r/userat" config user.signingkey)" "~/.ssh/id_ed25519_personal.pub"
+check_eq "git(work): user@ https push url rewritten to ssh" "$(gitw -C "$r/userat" remote get-url --push origin)" "git@github.com:george-haws/dotfiles.git"
+gitw init -q "$r/userat-work"; gitw -C "$r/userat-work" remote add origin https://someone@github.com/example-org/x.git
+check_eq "git(work): user@ https work remote stays work" "$(gitw -C "$r/userat-work" config user.email)" "work@example.com"
 gitw init -q "$r/scp"; gitw -C "$r/scp" remote add origin git@github.com:george-elliott/x.git
 check_eq "git(work): scp personal remote -> personal email" "$(gitw -C "$r/scp" config user.email)" "geehaws@gmail.com"
 gitw init -q "$r/work"; gitw -C "$r/work" remote add origin https://github.com/example-org/x.git
@@ -152,6 +158,12 @@ done
 check_nofile "$P/.local/bin/dot"
 check_nofile "$P/.local/bin/gitio"
 check_grep "git-delete-local-merged keeps main" "$P/.local/bin/git-delete-local-merged" "main"
+dl="$tmp/dl"; git init -q -b main "$dl"; git -C "$dl" -c user.email=t@t -c user.name=t -c commit.gpgsign=false commit -q --allow-empty -m root
+git -C "$dl" branch merged-a; git -C "$dl" branch merged-b; git -C "$dl" checkout -q merged-a
+out=$(cd "$dl" && PATH="$P/.local/bin:$PATH" GIT_CONFIG_GLOBAL=/dev/null git delete-local-merged 2>&1); rc=$?
+check_eq "git-delete-local-merged: exit 0 while on a merged branch" "$rc" "0"
+check_eq "git-delete-local-merged: deletes the other merged branch" "$(git -C "$dl" branch --format='%(refname:short)' | sort | tr '\n' ' ')" "main merged-a "
+check_eq "git-delete-local-merged: no error output" "$(printf '%s' "$out" | grep -c 'error')" "0"
 check_file "$P/.vimrc"
 
 # Task 7: Brewfile and scripts
@@ -203,7 +215,7 @@ check_eq "keys(work): idempotent, no new keys second run" "$(printf '%s\n' "$out
 # Task 8: install.sh and README
 if sh -n "$SRC/install.sh"; then pass "install.sh: sh -n"; else fail "install.sh: syntax"; fi
 check_grep "install.sh: official installer to ~/.local/bin" "$SRC/install.sh" 'get.chezmoi.io'
-check_fgrep "install.sh: init with source" "$SRC/install.sh" 'init --source "$HOME/.dotfiles" --apply george-haws'
+check_fgrep "install.sh: init with explicit URL, no guessing" "$SRC/install.sh" 'init --source "$HOME/.dotfiles" --apply --guess-repo-url=false https://github.com/george-haws/dotfiles.git'
 check_fgrep "README: one-liner uses sh -c" "$SRC/README.md" 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-haws/dotfiles/master/install.sh)"'
 check_grep "README: chezmoi upgrade reminder" "$SRC/README.md" 'chezmoi upgrade'
 check_grep "README: SSH clone rule for private personal repos" "$SRC/README.md" 'private personal'

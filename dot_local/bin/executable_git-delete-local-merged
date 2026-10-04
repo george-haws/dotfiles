@@ -5,4 +5,5 @@
 #
 #   https://plus.google.com/115587336092124934674/posts/dXsagsvLakJ
 
-git branch --format='%(refname:short)' --merged | grep -vxE 'master|main' | xargs git branch -d
+# The format prints an empty line for the checked-out branch; sed drops it.
+git branch --format='%(if)%(HEAD)%(then)%(else)%(refname:short)%(end)' --merged | sed '/^$/d' | grep -vxE 'master|main' | xargs git branch -d
