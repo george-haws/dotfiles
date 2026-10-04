@@ -1,5 +1,11 @@
 The MIT License
 
+Copyright (c) 2026 George Haws
+
+Portions of this repository, chiefly the git-* helper scripts in
+.local/bin, are adapted from Zach Holman's dotfiles
+(https://github.com/holman/dotfiles) and remain:
+
 Copyright (c) Zach Holman, http://zachholman.com
 
 Permission is hereby granted, free of charge, to any person obtaining a copy

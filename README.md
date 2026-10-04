@@ -46,3 +46,7 @@ GH_CONFIG_DIR=~/.config/gh-personal gh auth login
 ## Design
 
 `docs/superpowers/specs/2026-10-01-chezmoi-dotfiles-design.md` records the design and the decisions behind it.
+
+## License
+
+MIT, see `LICENSE.md`. The git-* helper scripts in `.local/bin` are adapted from [Zach Holman's dotfiles](https://github.com/holman/dotfiles) and keep his copyright notice.
