@@ -8,7 +8,7 @@ Managed with [chezmoi](https://chezmoi.io). The source lives at `~/.dotfiles`.
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/george-haws/dotfiles/master/install.sh)"
 ```
 
-chezmoi asks once whether this is a work machine and, if so, for the work email. It stores the answers in `~/.config/chezmoi/chezmoi.toml` and never commits them. The script installs the Command Line Tools and chezmoi; chezmoi then installs Homebrew, the Brewfile, and the dotfiles. If the Command Line Tools were missing, the script exits after launching their installer, so run it again when that finishes. It prints any new SSH public key. Add that key to GitHub twice, as an authentication key and as a signing key.
+chezmoi asks once whether this is a work machine and, if so, for the work email. It stores the answers in `~/.config/chezmoi/chezmoi.toml` and never commits them. The script installs the Command Line Tools and chezmoi; chezmoi then installs Homebrew, the Brewfile, and the dotfiles, and then uv and the uv tools listed in `run_onchange_after_20-uv-tools.sh`. If the Command Line Tools were missing, the script exits after launching their installer, so run it again when that finishes. It prints any new SSH public key. Add that key to GitHub twice, as an authentication key and as a signing key.
 
 By hand, the same thing is three commands:
 

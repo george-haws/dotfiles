@@ -175,6 +175,9 @@ check_eq "homebrew script: hash comment" "$(printf '%s\n' "$brew_sh" | grep -c '
 check_eq "homebrew script: bundles from sourceDir" "$(printf '%s\n' "$brew_sh" | grep -c "brew bundle --file \"$SRC/Brewfile\"")" "1"
 check_eq "homebrew script: no lfs install" "$(printf '%s\n' "$brew_sh" | grep -c 'git lfs install')" "0"
 printf '%s\n' "$brew_sh" > "$tmp/brew.sh"; if sh -n "$tmp/brew.sh"; then pass "homebrew script: sh -n"; else fail "homebrew script: syntax"; fi
+if sh -n "$SRC/run_onchange_after_20-uv-tools.sh"; then pass "uv tools script: sh -n"; else fail "uv tools script: syntax"; fi
+check_grep "uv tools script: graphifyy" "$SRC/run_onchange_after_20-uv-tools.sh" '^for tool in .*graphifyy'
+check_grep "uv tools script: graphify claude skill" "$SRC/run_onchange_after_20-uv-tools.sh" 'graphify" install --platform claude'
 keys_w=$(render_tmpl work run_once_before_10-ssh-keys.sh.tmpl)
 keys_p=$(render_tmpl personal run_once_before_10-ssh-keys.sh.tmpl)
 printf '%s\n' "$keys_w" > "$tmp/keys-w.sh"; printf '%s\n' "$keys_p" > "$tmp/keys-p.sh"
