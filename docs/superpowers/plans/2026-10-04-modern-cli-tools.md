@@ -1456,14 +1456,30 @@ Expected: both report adopted or already installed. If brew says an app is not f
 
 - [ ] **Step 2: Seed the local settings files from the live ones**
 
+First confirm that the live Claude Code file differs from the shared one only where expected:
+
+```bash
+jq -r -n --slurpfile l ~/.claude/settings.json --slurpfile s ~/.dotfiles/.shared/claude-settings.json \
+  '$l[0] as $l | $s[0] as $s | ($l|keys) + ($s|keys) | unique[] | select($l[.] != $s[.])'
+```
+
+Expected: `autoMode` and `statusLine`, nothing else. If other keys appear, they changed after Task 5. Show them to the user, and add each one that should stay on this machine to the `claude` command below after `autoMode`.
+
 `dotfiles-capture` is not in `~/.local/bin` until the apply, so run it from the source:
 
 ```bash
-sh ~/.dotfiles/dot_local/bin/executable_dotfiles-capture --from ~/.claude/settings.json claude
+sh ~/.dotfiles/dot_local/bin/executable_dotfiles-capture --from ~/.claude/settings.json claude autoMode
 sh ~/.dotfiles/dot_local/bin/executable_dotfiles-capture --from ~/.config/zed/settings.json zed
 ```
 
-Expected: Claude Code reports `captured autoMode into ~/.config/chezmoi/claude-settings.local.json` and writes `~/.claude/settings.json` from the shared file plus that; Zed reports `nothing to capture`. Doing this before the apply means the running Claude Code session never sees its settings without `autoMode`. If the Claude Code line lists more keys than `autoMode`, those changed after Task 5. Show them to the user. Each stays local unless the user wants it shared, in which case move it from the local file to the shared file by hand and commit.
+Expected:
+- Each command also prints `Backed up <file> to <file>.pre-chezmoi`, after its capture line, because chezmoi has never written either file.
+- Claude Code reports `captured autoMode into` the local file, then writes `~/.claude/settings.json` from the shared file plus that.
+  - Naming `autoMode` is deliberate. It keeps the live file's own `statusLine` (`~/.claude/statusline.sh`) out of the local file, so the shared `claude-statusline` takes over. The user chose that on 2026-10-04.
+  - `~/.claude/statusline.sh` stays on disk, unused.
+- Zed reports `captured agent_servers session into` the local file. That file then holds only `agent_servers.claude-acp.default_config_options.mode = "bypassPermissions"` and `session.trust_all_worktrees = true`. The shared file leaves both out, so the work machine does not get them. Zed's settings are then rewritten from the shared file plus that, losing their comments.
+
+Doing this before the apply means the running Claude Code session never sees its settings without `autoMode`.
 
 - [ ] **Step 3: Review what the apply will do**
 
@@ -1471,7 +1487,7 @@ Expected: Claude Code reports `captured autoMode into ~/.config/chezmoi/claude-s
 chezmoi diff
 ```
 
-Expected: new and changed files under `~/.config`, `~/.gitconfig`, and `~/.local/bin`; `~/.local/bin/headers` deleted; Zed's settings losing their comments; no diff for `~/.claude/settings.json`, which Step 2 wrote. Stop and ask if anything else appears.
+Expected: new and changed files under `~/.config`, `~/.gitconfig`, and `~/.local/bin`; `~/.local/bin/headers` deleted; the homebrew run script; no diff for `~/.claude/settings.json` or `~/.config/zed/settings.json`, which Step 2 wrote. Stop and ask if anything else appears.
 
 - [ ] **Step 4: Apply**
 
@@ -1479,7 +1495,7 @@ Expected: new and changed files under `~/.config`, `~/.gitconfig`, and `~/.local
 chezmoi apply -v
 ```
 
-Expected: the homebrew run script fires because the Brewfile hash changed, and `brew bundle` installs the new formulae and the font cask. The backup script copies both settings files to `.pre-chezmoi`. Then the files are written and `.chezmoiremove` deletes the old `headers` script. This takes several minutes.
+Expected: the homebrew run script fires because the Brewfile hashes changed, and `brew bundle` installs the new formulae and the font cask from the Brewfile, then `Brewfile.personal`. The backup script finds the `.pre-chezmoi` copies Step 2 made and leaves them alone. Then the files are written and `.chezmoiremove` deletes the old `headers` script. This takes several minutes.
 
 - [ ] **Step 5: Confirm the old headers script is gone**
 

@@ -255,7 +255,7 @@ As before, each assertion is written before the file it checks.
 ## Rollout on this machine
 
 1. `brew install --cask --adopt iterm2 zed` once, by hand, because the apps already exist.
-2. Seed the local settings files from the live ones with `dotfiles-capture --from`, run from the source tree because `~/.local/bin` does not have it yet. This moves `autoMode` into the local Claude Code file before the running session can notice it missing.
+2. Seed the local settings files from the live ones with `dotfiles-capture --from`, run from the source tree because `~/.local/bin` does not have it yet. Each run first keeps a `.pre-chezmoi` copy. The Claude Code run names `autoMode`, so the local file gets the machine description, and the running session never sees it missing, but not the old `~/.claude/statusline.sh` status line, which `claude-statusline` replaces. The Zed run moves this machine's `bypassPermissions` agent mode and `trust_all_worktrees` into the local Zed file.
 3. `chezmoi diff`, then `chezmoi apply`. The homebrew run script fires because the Brewfile hash changed, and `.chezmoiremove` deletes the old `headers` script.
 4. `atuin import auto` once to load the existing history file.
 5. Open a new shell and set iTerm2's font to JetBrains Mono Nerd Font by hand. iTerm2 preferences are not managed.
