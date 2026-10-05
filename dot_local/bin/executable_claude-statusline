@@ -1,0 +1,37 @@
+#!/bin/sh
+# Claude Code status line: "<repo> on <branch> with unpushed", colored like the
+# shell prompt. Claude Code pipes its session JSON on stdin; this reads the
+# current directory from it and asks git the rest. Outside a repo it prints the
+# directory name. Never prints to stderr, never exits non-zero.
+set -u
+# Claude Code runs this while its own git commands run. Without this, git status
+# can hold .git/index.lock just long enough to make one of them fail.
+export GIT_OPTIONAL_LOCKS=0
+
+dir=$(jq -r '.workspace.current_dir // .cwd // empty' 2>/dev/null)
+[ -n "$dir" ] && [ -d "$dir" ] || dir=$PWD
+
+cyan='\033[1;36m'; green='\033[1;32m'; red='\033[1;31m'; magenta='\033[1;35m'; reset='\033[0m'
+
+top=$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null) || {
+  printf "${cyan}%s${reset}\n" "$(basename "$dir")"
+  exit 0
+}
+
+branch=$(git -C "$dir" symbolic-ref --short -q HEAD 2>/dev/null) ||
+  branch=$(git -C "$dir" rev-parse --short HEAD 2>/dev/null)
+
+if [ -z "$(git -C "$dir" status --porcelain 2>/dev/null)" ]; then
+  branch_color=$green
+else
+  branch_color=$red
+fi
+
+line=$(printf "${cyan}%s${reset} on ${branch_color}%s${reset}" "$(basename "$top")" "$branch")
+
+ahead=$(git -C "$dir" rev-list --count '@{upstream}..HEAD' 2>/dev/null) || ahead=0
+if [ "$ahead" -gt 0 ]; then
+  line="$line with ${magenta}unpushed${reset}"
+fi
+
+printf '%b\n' "$line"

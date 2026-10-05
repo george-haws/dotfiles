@@ -467,6 +467,41 @@ check_eq "capture --shared: and out of the local file" "$(zl 'has("ui_font_size"
 capture --check zed >/dev/null; rc=$?
 check_eq "capture --shared: live file matches the repo afterwards" "$rc" "0"
 
+# Task 7 (2026-10-04): Claude Code status line
+sl="$P/.local/bin/claude-statusline"
+check_file "$sl"
+[ -x "$sl" ] && pass "statusline: executable" || fail "statusline: not executable"
+sh -n "$sl" && pass "statusline: sh -n" || fail "statusline: syntax"
+check_grep "statusline: never takes git's index lock" "$sl" '^export GIT_OPTIONAL_LOCKS=0$'
+check_eq "claude settings: statusLine command" "$(jq -r '.statusLine.command' "$P/.claude/settings.json")" "~/.local/bin/claude-statusline"
+check_eq "claude settings: statusLine type" "$(jq -r '.statusLine.type' "$P/.claude/settings.json")" "command"
+strip_ansi() { sed "s/$(printf '\033')\[[0-9;]*m//g"; }
+statusline() { # dir
+  printf '{"workspace":{"current_dir":"%s","project_dir":"%s"},"cwd":"%s"}' "$1" "$1" "$1" | "$sl" 2>>"$tmp/sl.err" | strip_ansi
+}
+: > "$tmp/sl.err"
+slr="$tmp/sl"; rm -rf "$slr"; mkdir -p "$slr"
+git init -q --bare -b main "$slr/remote.git"
+git clone -q "$slr/remote.git" "$slr/x" 2>/dev/null
+slgit() { git -C "$slr/x" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
+slgit symbolic-ref HEAD refs/heads/main   # independent of init.defaultBranch on this machine
+slgit commit -q --allow-empty -m first
+check_eq "statusline: no upstream yet -> repo on branch" "$(statusline "$slr/x")" "x on main"
+slgit push -q -u origin main 2>/dev/null
+check_eq "statusline: pushed -> repo on branch" "$(statusline "$slr/x")" "x on main"
+slgit commit -q --allow-empty -m second
+check_eq "statusline: ahead -> with unpushed" "$(statusline "$slr/x")" "x on main with unpushed"
+mkdir -p "$slr/x/sub"
+check_eq "statusline: subdirectory names the repo, not the dir" "$(statusline "$slr/x/sub")" "x on main with unpushed"
+slgit checkout -q --detach
+check_eq "statusline: detached -> short hash" "$(statusline "$slr/x")" "x on $(slgit rev-parse --short HEAD)"
+mkdir -p "$slr/plain"
+check_eq "statusline: outside a repo -> directory name" "$(statusline "$slr/plain")" "plain"
+check_eq "statusline: no stderr noise across all calls" "$(wc -c < "$tmp/sl.err" | tr -d ' ')" "0"
+check_eq "statusline: empty stdin -> cwd" "$(cd "$slr/plain" && printf '' | "$sl" 2>/dev/null | strip_ansi)" "plain"
+dirty_out=$(touch "$slr/x/untracked" && printf '{"workspace":{"current_dir":"%s"}}' "$slr/x" | "$sl" 2>/dev/null)
+case "$dirty_out" in *"$(printf '\033[1;31m')"*) pass "statusline: dirty tree colors branch red";; *) fail "statusline: dirty tree should color branch red";; esac
+
 # Task 9: doctor
 for t in personal work; do
   d="$tmp/$t/.local/bin/dotfiles-doctor"

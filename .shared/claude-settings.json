@@ -17,5 +17,9 @@
       "effortLevel": "high"
     }
   },
+  "statusLine": {
+    "command": "~/.local/bin/claude-statusline",
+    "type": "command"
+  },
   "theme": "dark"
 }
