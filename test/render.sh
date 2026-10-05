@@ -337,6 +337,8 @@ for t in personal work; do
   check_eq "claude settings($t): the shared file when there is no local file" "$(jq -S . "$c" 2>&1)" "$(jq -S . "$cshared" 2>&1)"
   check_eq "zed settings($t): the shared file when there is no local file" "$(jq -S . "$z" 2>&1)" "$(jq -S . "$zshared" 2>&1)"
   check_mode "zed settings($t): 0600" "$z" "600"
+  check_mode "claude settings($t): ~/.claude is 0700" "$tmp/$t/.claude" "700"
+  check_mode "zed settings($t): ~/.config/zed is 0700" "$tmp/$t/.config/zed" "700"
   check_eq "claude settings($t): only settings.json under .claude" "$(find "$tmp/$t/.claude" -type f | sed "s|$tmp/$t/.claude/||" | sort | tr '\n' ' ')" "settings.json "
 done
 check_eq "claude shared: no machine description" "$(jq 'has("autoMode")' "$cshared")" "false"
@@ -346,13 +348,13 @@ oh="$tmp/overlay-home"; mkdir -p "$oh/.config/chezmoi"
 printf '{"autoMode":{"environment":"LOCAL"},"theme":"local-theme","permissions":{"allow":["Bash(local:*)","Bash(local:*)"],"deny":["Read(.env)"]}}\n' > "$oh/.config/chezmoi/claude-settings.local.json"
 printf '// Zed allows comments\n{"base_keymap": "local-keymap", "local_only": {"x": 1},}\n' > "$oh/.config/chezmoi/zed-settings.local.json"
 overlay() { HOME="$oh" chezmoi --config "$SRC/test/fixtures/work.toml" --source "$SRC" --persistent-state "$tmp/overlay.boltdb" execute-template < "$SRC/$1"; }
-oc=$(overlay dot_claude/settings.json.tmpl)
+oc=$(overlay private_dot_claude/settings.json.tmpl)
 check_eq "claude overlay: local value wins" "$(printf '%s' "$oc" | jq -r .theme)" "local-theme"
 check_eq "claude overlay: local-only key" "$(printf '%s' "$oc" | jq -r .autoMode.environment)" "LOCAL"
 check_eq "claude overlay: shared keys kept" "$(printf '%s' "$oc" | jq -S 'del(.theme, .autoMode, .permissions)')" "$(jq -S 'del(.theme, .permissions)' "$cshared")"
 check_eq "claude overlay: allow lists unioned, no duplicates" "$(printf '%s' "$oc" | jq -c .permissions.allow)" "$(jq -c '(.permissions.allow // []) + ["Bash(local:*)"]' "$cshared")"
 check_eq "claude overlay: deny from the local file" "$(printf '%s' "$oc" | jq -c .permissions.deny)" '["Read(.env)"]'
-oz=$(overlay dot_config/zed/private_settings.json.tmpl)
+oz=$(overlay dot_config/private_zed/private_settings.json.tmpl)
 check_eq "zed overlay: local value wins, comments allowed" "$(printf '%s' "$oz" | jq -r .base_keymap)" "local-keymap"
 check_eq "zed overlay: local-only key" "$(printf '%s' "$oz" | jq -c .local_only)" '{"x":1}'
 check_eq "zed overlay: shared keys kept" "$(printf '%s' "$oz" | jq -S 'del(.base_keymap, .local_only)')" "$(jq -S 'del(.base_keymap)' "$zshared")"

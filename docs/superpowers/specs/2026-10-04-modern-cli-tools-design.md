@@ -153,14 +153,14 @@ git-absorb needs no config. `git absorb --and-rebase` is the normal invocation.
 |---|---|---|
 | `~/.config/starship.toml` | `dot_config/starship.toml` | Reproduces the current prompt: blank line, `in <cyan dir> on <branch> with unpushed`, newline, `› `. Branch is bold green when clean, bold red when dirty. ` with unpushed` appears in bold magenta when ahead of upstream. Everything else off except `nodejs`, `golang`, and `status` for non-zero exits. |
 | `~/.config/atuin/config.toml` | `dot_config/atuin/config.toml` | `auto_sync = false`, `update_check = false`, `search_mode = "fuzzy"`, `filter_mode = "global"`, `filter_mode_shell_up_key_binding = "directory"`, `style = "compact"`, `inline_height = 20`, `enter_accept = false`. |
-| `~/.claude/settings.json` | `dot_claude/settings.json.tmpl` | Renders `.shared/claude-settings.json` with the machine's local file merged over it. See "Settings the apps rewrite". |
-| `~/.config/zed/settings.json` | `dot_config/zed/private_settings.json.tmpl` | The same, from `.shared/zed-settings.json`. Mode 0600, as Zed created it. |
+| `~/.claude/settings.json` | `private_dot_claude/settings.json.tmpl` | Renders `.shared/claude-settings.json` with the machine's local file merged over it. See "Settings the apps rewrite". |
+| `~/.config/zed/settings.json` | `dot_config/private_zed/private_settings.json.tmpl` | The same, from `.shared/zed-settings.json`. Mode 0600, as Zed created it. |
 | `~/.local/bin/dotfiles-capture` | `dot_local/bin/executable_dotfiles-capture` | See "Settings the apps rewrite". |
 | `~/.local/bin/claude-statusline` | `dot_local/bin/executable_claude-statusline` | See "Claude Code status line". |
 
 Not tracked, on purpose: `~/.claude/CLAUDE.md` and `~/.claude/keybindings.json` do not exist today and are added if they ever do. Nothing under `~/.claude/skills/` is tracked; see Future work. Credentials, projects, sessions, history, shell snapshots, plugin caches, and telemetry under `~/.claude/` are machine-local or secret and never enter the repo.
 
-chezmoi never removes files it does not manage, so adding `dot_claude/` to the source tree leaves everything else under `~/.claude/` alone.
+chezmoi never removes files it does not manage, so adding `private_dot_claude/` to the source tree leaves everything else under `~/.claude/` alone.
 
 The `headers` script is deleted from `dot_local/bin/` and listed in `.chezmoiremove`, because chezmoi does not delete a file it stops managing.
 
