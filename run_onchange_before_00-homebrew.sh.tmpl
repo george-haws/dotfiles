@@ -1,7 +1,10 @@
 #!/bin/sh
 # Brewfile hash: {{ include "Brewfile" | sha256sum }}
-# Runs before chezmoi writes any file, so the Brewfile is read from the source
-# directory. The hash above makes chezmoi rerun this when the Brewfile changes.
+{{- if not .work }}
+# Brewfile.personal hash: {{ include "Brewfile.personal" | sha256sum }}
+{{- end }}
+# Runs before chezmoi writes any file, so the Brewfiles are read from the source
+# directory. The hashes above make chezmoi rerun this when either changes.
 set -eu
 
 if ! command -v brew >/dev/null 2>&1 && [ ! -x /opt/homebrew/bin/brew ]; then
@@ -11,3 +14,6 @@ fi
 eval "$(/opt/homebrew/bin/brew shellenv)"
 
 brew bundle --file "{{ .chezmoi.sourceDir }}/Brewfile"
+{{- if not .work }}
+brew bundle --file "{{ .chezmoi.sourceDir }}/Brewfile.personal"
+{{- end }}

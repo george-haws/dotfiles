@@ -1,0 +1,12 @@
+# Personal machines only: the mobile and Java tooling installed by hand before
+# 2026-10-04, plus spark. The homebrew run script bundles this after the
+# Brewfile, and .chezmoiignore keeps it off work machines.
+tap "mobile-dev-inc/tap"
+tap "facebook/fb"
+
+brew "cocoapods"
+brew "mobile-dev-inc/tap/maestro"
+brew "facebook/fb/idb-companion"
+brew "openjdk"
+brew "ruby"
+brew "spark"

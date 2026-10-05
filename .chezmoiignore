@@ -7,3 +7,6 @@ test
 .config/git/personal
 .local/bin/gh
 {{ end }}
+{{ if .work }}
+Brewfile.personal
+{{ end }}

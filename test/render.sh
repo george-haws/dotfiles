@@ -241,22 +241,34 @@ check_file "$P/.vimrc"
 
 # Task 7: Brewfile and scripts
 check_file "$P/Brewfile"
-for pkg in coreutils gh git git-lfs go grc nvm uv vim \
-           node yarn cocoapods mobile-dev-inc/tap/maestro facebook/fb/idb-companion openjdk ruby spark \
+for pkg in coreutils gh git git-lfs go grc nvm uv vim node yarn \
            ripgrep fd fzf bat eza zoxide zsh-autosuggestions zsh-syntax-highlighting atuin starship xh \
            git-delta difftastic lazygit git-absorb; do
   check_grep "Brewfile: $pkg" "$P/Brewfile" "^brew \"$pkg\""
 done
-for t in mobile-dev-inc/tap facebook/fb; do check_grep "Brewfile: tap $t" "$P/Brewfile" "^tap \"$t\""; done
 for c in iterm2 zed font-jetbrains-mono-nerd-font; do check_grep "Brewfile: cask $c" "$P/Brewfile" "^cask \"$c\""; done
 check_eq "Brewfile: exactly three casks" "$(grep -c '^cask ' "$P/Brewfile")" "3"
 check_nogrep "Brewfile: no mise yet" "$P/Brewfile" '^brew "mise"'
 check_nogrep "Brewfile: no chezmoi" "$P/Brewfile" 'chezmoi'
+# Mobile and Java tooling, and spark, are for personal machines only.
+check_file "$P/Brewfile.personal"
+check_nofile "$W/Brewfile.personal"
+for pkg in cocoapods mobile-dev-inc/tap/maestro facebook/fb/idb-companion openjdk ruby spark; do
+  check_grep "Brewfile.personal: $pkg" "$P/Brewfile.personal" "^brew \"$pkg\""
+  check_nogrep "Brewfile: no $pkg" "$P/Brewfile" "^brew \"$pkg\""
+done
+for t in mobile-dev-inc/tap facebook/fb; do check_grep "Brewfile.personal: tap $t" "$P/Brewfile.personal" "^tap \"$t\""; done
+check_nogrep "Brewfile: no taps" "$P/Brewfile" '^tap '
 brew_sh=$(render_tmpl work run_onchange_before_00-homebrew.sh.tmpl)
 check_eq "homebrew script: hash comment" "$(printf '%s\n' "$brew_sh" | grep -c '^# Brewfile hash: [0-9a-f]\{64\}$')" "1"
 check_eq "homebrew script: bundles from sourceDir" "$(printf '%s\n' "$brew_sh" | grep -c "brew bundle --file \"$SRC/Brewfile\"")" "1"
 check_eq "homebrew script: no lfs install" "$(printf '%s\n' "$brew_sh" | grep -c 'git lfs install')" "0"
 printf '%s\n' "$brew_sh" > "$tmp/brew.sh"; if sh -n "$tmp/brew.sh"; then pass "homebrew script: sh -n"; else fail "homebrew script: syntax"; fi
+check_eq "homebrew script(work): no personal Brewfile" "$(printf '%s\n' "$brew_sh" | grep -c 'Brewfile\.personal')" "0"
+brew_sh_p=$(render_tmpl personal run_onchange_before_00-homebrew.sh.tmpl)
+check_eq "homebrew script(personal): personal Brewfile hash" "$(printf '%s\n' "$brew_sh_p" | grep -c '^# Brewfile\.personal hash: [0-9a-f]\{64\}$')" "1"
+check_eq "homebrew script(personal): bundles the personal Brewfile" "$(printf '%s\n' "$brew_sh_p" | grep -c "brew bundle --file \"$SRC/Brewfile.personal\"")" "1"
+printf '%s\n' "$brew_sh_p" > "$tmp/brew-p.sh"; if sh -n "$tmp/brew-p.sh"; then pass "homebrew script(personal): sh -n"; else fail "homebrew script(personal): syntax"; fi
 if sh -n "$SRC/run_onchange_after_20-uv-tools.sh"; then pass "uv tools script: sh -n"; else fail "uv tools script: syntax"; fi
 check_grep "uv tools script: Homebrew uv" "$SRC/run_onchange_after_20-uv-tools.sh" '^uv=/opt/homebrew/bin/uv$'
 check_nogrep "uv tools script: no standalone installer" "$SRC/run_onchange_after_20-uv-tools.sh" 'astral.sh'
@@ -548,7 +560,9 @@ check_grep "doctor: chezmoi version check" "$W/.local/bin/dotfiles-doctor" 'rele
 check_grep "doctor: version check is a warning" "$W/.local/bin/dotfiles-doctor" 'warn "chezmoi'
 # Task 8 (2026-10-04): new doctor checks
 d="$P/.local/bin/dotfiles-doctor"
-check_fgrep "doctor: brew bundle check lists what is missing" "$d" "brew bundle check --file \"$SRC/Brewfile\" --no-upgrade --verbose"
+check_fgrep "doctor: brew bundle check lists what is missing" "$d" "brew bundle check --file \"$SRC/\$bf\" --no-upgrade --verbose"
+check_fgrep "doctor(personal): checks both Brewfiles" "$d" 'for bf in Brewfile Brewfile.personal; do'
+check_fgrep "doctor(work): checks the shared Brewfile only" "$W/.local/bin/dotfiles-doctor" 'for bf in Brewfile; do'
 check_fgrep "doctor: brew bundle check never auto-updates Homebrew" "$d" 'HOMEBREW_NO_AUTO_UPDATE=1 brew bundle check'
 check_grep "doctor: new tools on PATH" "$d" 'for t in rg fd fzf bat eza zoxide atuin starship xh delta difft lazygit git-absorb'
 check_grep "doctor: chezmoi verify on starship and atuin" "$d" 'chezmoi verify ~/.config/starship.toml ~/.config/atuin/config.toml'

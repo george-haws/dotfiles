@@ -15,7 +15,7 @@ Each line below was decided one at a time in the design conversation.
 
 | Item | Decision |
 |---|---|
-| Brewfile drift | Add the eight formulae installed by hand but not in the Brewfile. The doctor runs `brew bundle check` so drift fails loudly. |
+| Brewfile drift | Add the eight formulae installed by hand but not in the Brewfile. node and yarn go in the Brewfile; the mobile and Java tooling and spark go in a `Brewfile.personal` that only personal machines install. The doctor runs `brew bundle check` on each so drift fails loudly. |
 | ripgrep, fd | Add. `rg` is not installed today; the `rg` seen in Claude Code sessions is a shell-snapshot function. |
 | fzf | Add, with the zsh integration. Keeps Ctrl-T and Alt-C; Ctrl-R goes to atuin. |
 | bat | Add. `cat` is aliased to `bat`. `MANPAGER` uses bat for man pages. |
@@ -40,9 +40,6 @@ Each line below was decided one at a time in the design conversation.
 The Brewfile becomes:
 
 ```
-tap "mobile-dev-inc/tap"
-tap "facebook/fb"
-
 # Already in use
 brew "coreutils"
 brew "gh"
@@ -57,12 +54,6 @@ brew "vim"
 # Installed by hand before this change; the mise changeset removes node and yarn
 brew "node"
 brew "yarn"
-brew "cocoapods"
-brew "mobile-dev-inc/tap/maestro"
-brew "facebook/fb/idb-companion"
-brew "openjdk"
-brew "ruby"
-brew "spark"
 
 # Shell
 brew "ripgrep"
@@ -88,6 +79,22 @@ cask "iterm2"
 cask "zed"
 cask "font-jetbrains-mono-nerd-font"
 ```
+
+The rest of the hand-installed batch is for personal machines only, in `Brewfile.personal`:
+
+```
+tap "mobile-dev-inc/tap"
+tap "facebook/fb"
+
+brew "cocoapods"
+brew "mobile-dev-inc/tap/maestro"
+brew "facebook/fb/idb-companion"
+brew "openjdk"
+brew "ruby"
+brew "spark"
+```
+
+`run_onchange_before_00-homebrew.sh.tmpl` bundles it after the Brewfile when chezmoi's `work` is false, and carries its hash only then, so editing it never reruns the script on a work machine. `.chezmoiignore` keeps the file itself off work machines. The doctor checks both Brewfiles on a personal machine and only the Brewfile on a work machine.
 
 Every formula and cask name above was checked against Homebrew on 2026-10-04.
 

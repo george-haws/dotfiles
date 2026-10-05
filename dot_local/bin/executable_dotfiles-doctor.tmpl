@@ -74,11 +74,13 @@ dups=$(printf '%s\n' "$PATH" | tr ':' '\n' | sort | uniq -d | tr '\n' ' ')
 if [ -z "$dups" ]; then pass "no duplicate PATH entries"; else fail "duplicate PATH entries: $dups"; fi
 
 echo "brew"
-if HOMEBREW_NO_AUTO_UPDATE=1 brew bundle check --file "{{ .chezmoi.sourceDir }}/Brewfile" --no-upgrade --verbose >"$tmp/bundle.out" 2>&1; then
-  pass "Brewfile satisfied"
-else
-  fail "Brewfile not satisfied: $(sed -n 's/^→ //p' "$tmp/bundle.out" | tr '\n' ' ')"
-fi
+for bf in Brewfile{{ if not .work }} Brewfile.personal{{ end }}; do
+  if HOMEBREW_NO_AUTO_UPDATE=1 brew bundle check --file "{{ .chezmoi.sourceDir }}/$bf" --no-upgrade --verbose >"$tmp/bundle.out" 2>&1; then
+    pass "$bf satisfied"
+  else
+    fail "$bf not satisfied: $(sed -n 's/^→ //p' "$tmp/bundle.out" | tr '\n' ' ')"
+  fi
+done
 for t in rg fd fzf bat eza zoxide atuin starship xh delta difft lazygit git-absorb; do
   if command -v "$t" >/dev/null 2>&1; then pass "$t on PATH"; else fail "$t missing"; fi
 done

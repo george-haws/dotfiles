@@ -1,6 +1,3 @@
-tap "mobile-dev-inc/tap"
-tap "facebook/fb"
-
 # Already in use
 brew "coreutils"
 brew "gh"
@@ -13,14 +10,9 @@ brew "uv"
 brew "vim"
 
 # Installed by hand before 2026-10-04. The mise changeset removes node and yarn.
+# The rest of that batch, the mobile and Java tooling, is in Brewfile.personal.
 brew "node"
 brew "yarn"
-brew "cocoapods"
-brew "mobile-dev-inc/tap/maestro"
-brew "facebook/fb/idb-companion"
-brew "openjdk"
-brew "ruby"
-brew "spark"
 
 # Shell
 brew "ripgrep"

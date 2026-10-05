@@ -47,6 +47,8 @@ GH_CONFIG_DIR=~/.config/gh-personal gh auth login
 
 The Brewfile installs fzf (Ctrl-T files, Alt-C directories), atuin (Ctrl-R history, local only, no sync), zoxide (`z dir`), bat (`cat` and man pages), eza (`ls`), ripgrep, fd, xh (`headers`), starship (the prompt), delta (git pager), difftastic (`git dft` or `dft`), lazygit (`lg`), and git-absorb. Each shell integration is skipped when its tool is absent, so a half-installed machine still gets a shell.
 
+Personal machines also get `Brewfile.personal`: the mobile and Java tooling (cocoapods, maestro, idb-companion, openjdk, ruby) and spark. Work machines skip it.
+
 Casks: iTerm2, Zed, and JetBrains Mono Nerd Font. On a machine where iTerm2 or Zed is already in `/Applications`, run `brew install --cask --adopt iterm2 zed` once before `chezmoi apply`, because `brew bundle` will not install over an app it did not put there. Set iTerm2's font to JetBrains Mono Nerd Font by hand; iTerm2 preferences are not managed.
 
 After the first apply on an existing machine, run `atuin import auto` once to load the old history file.
