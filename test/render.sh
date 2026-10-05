@@ -128,13 +128,13 @@ check_eq "gh shim: -R owner/repo -> gh-personal" "$(cd "$tmp" && ghw pr list -R 
 
 # Task 5: zsh
 check_fgrep "zshenv sets ZDOTDIR" "$P/.zshenv" 'export ZDOTDIR="$HOME/.config/zsh"'
-for f in .zshrc path.zsh env.zsh options.zsh aliases.zsh git.zsh nvm.zsh prompt.zsh completion.zsh; do
+for f in .zshrc path.zsh env.zsh options.zsh aliases.zsh git.zsh nvm.zsh tools.zsh prompt.zsh completion.zsh plugins.zsh; do
   check_file "$P/.config/zsh/$f"
   if zsh -n "$P/.config/zsh/$f" 2>/dev/null; then pass "zsh -n $f"; else fail "zsh -n $f: syntax error"; fi
 done
 for f in c _c extract gf _git-rm; do check_file "$P/.config/zsh/functions/$f"; done
 check_nofile "$P/.config/zsh/functions/_brew"
-check_grep "zshrc: explicit order" "$P/.config/zsh/.zshrc" 'for f in path env options aliases git nvm prompt completion'
+check_grep "zshrc: explicit order" "$P/.config/zsh/.zshrc" 'for f in path env options aliases git nvm prompt completion tools plugins; do'
 check_grep "zshrc: localrc last" "$P/.config/zsh/.zshrc" 'source ~/.localrc'
 check_nogrep "aliases: no gulp/ws/mstart/chc" "$P/.config/zsh/aliases.zsh" 'gulp|WebStorm|memcached|cache_classes'
 check_grep "aliases: pubkey uses ed25519" "$P/.config/zsh/aliases.zsh" 'id_ed25519.pub'
@@ -150,11 +150,57 @@ out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c '
 check_eq "zsh: path order" "$out" "$h/.local/bin /opt/homebrew/bin /opt/homebrew/sbin "
 out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'whence -w node yarn corepack extract c | tr "\n" " "' 2>&1)
 check_eq "zsh: lazy stubs and autoloads defined" "$out" "node: function yarn: function corepack: function extract: function c: function "
+# Task 2 (2026-10-04): tool integrations
+check_grep "tools: fzf guarded" "$P/.config/zsh/tools.zsh" 'commands\[fzf\]'
+check_grep "tools: fzf zsh integration" "$P/.config/zsh/tools.zsh" 'source <\(fzf --zsh\)'
+check_grep "tools: fd drives fzf" "$P/.config/zsh/tools.zsh" "FZF_DEFAULT_COMMAND='fd "
+check_grep "tools: zoxide guarded" "$P/.config/zsh/tools.zsh" 'commands\[zoxide\].*zoxide init zsh'
+check_grep "tools: atuin after fzf, up arrow untouched" "$P/.config/zsh/tools.zsh" 'atuin init zsh --disable-up-arrow'
+fz=$(grep -n 'fzf --zsh' "$P/.config/zsh/tools.zsh" | head -1 | cut -d: -f1)
+at=$(grep -n 'atuin init' "$P/.config/zsh/tools.zsh" | head -1 | cut -d: -f1)
+if [ -n "$fz" ] && [ -n "$at" ] && [ "$fz" -lt "$at" ]; then pass "tools: atuin binds after fzf"; else fail "tools: atuin must come after fzf"; fi
+check_grep "plugins: autosuggestions from Homebrew" "$P/.config/zsh/plugins.zsh" '/opt/homebrew/share/zsh-autosuggestions/zsh-autosuggestions.zsh'
+check_grep "plugins: syntax highlighting from Homebrew" "$P/.config/zsh/plugins.zsh" '/opt/homebrew/share/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh'
+as=$(grep -n 'zsh-autosuggestions.zsh' "$P/.config/zsh/plugins.zsh" | head -1 | cut -d: -f1)
+sh_=$(grep -n 'zsh-syntax-highlighting.zsh' "$P/.config/zsh/plugins.zsh" | head -1 | cut -d: -f1)
+if [ -n "$as" ] && [ -n "$sh_" ] && [ "$as" -lt "$sh_" ]; then pass "plugins: highlighting last"; else fail "plugins: highlighting must be last"; fi
+check_grep "env: bat as man pager" "$P/.config/zsh/env.zsh" "MANPAGER=.*bat -l man -p"
+check_grep "aliases: eza ls" "$P/.config/zsh/aliases.zsh" "alias ls='eza -lF --git --icons'"
+check_grep "aliases: eza l" "$P/.config/zsh/aliases.zsh" "alias l='eza -lah --git --icons'"
+check_grep "aliases: eza ll" "$P/.config/zsh/aliases.zsh" "alias ll='eza -l --git --icons'"
+check_grep "aliases: eza la" "$P/.config/zsh/aliases.zsh" "alias la='eza -a --icons'"
+check_nogrep "aliases: gls gone" "$P/.config/zsh/aliases.zsh" 'gls'
+check_grep "aliases: cat is bat" "$P/.config/zsh/aliases.zsh" "alias cat='bat'"
+check_grep "aliases: lg" "$P/.config/zsh/aliases.zsh" "alias lg='lazygit'"
+check_grep "aliases: headers via xh" "$P/.config/zsh/aliases.zsh" "alias headers='xh -h'"
+check_grep "git aliases: dft" "$P/.config/zsh/git.zsh" "alias dft='git dft'"
+check_file "$P/.config/atuin/config.toml"
+check_grep "atuin: sync off" "$P/.config/atuin/config.toml" '^auto_sync = false'
+check_grep "atuin: no update check" "$P/.config/atuin/config.toml" '^update_check = false'
+check_grep "atuin: directory filter on up arrow" "$P/.config/atuin/config.toml" '^filter_mode_shell_up_key_binding = "directory"'
+# Each alias is guarded. With stub tools first on PATH the aliases appear. With
+# the stubs gone they disappear, except for tools this machine's Homebrew really
+# has, because path.zsh adds /opt/homebrew/bin whether or not it exists.
+mkdir -p "$h/.local/bin"
+for t in eza bat lazygit xh; do printf '#!/bin/sh\n' > "$h/.local/bin/$t"; chmod +x "$h/.local/bin/$t"; done
+out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'whence -w ls cat lg headers | tr "\n" " "' 2>&1)
+check_eq "zsh: eza/bat/lazygit/xh aliases when the tools exist" "$out" "ls: alias cat: alias lg: alias headers: alias "
+for t in eza bat lazygit xh; do rm -f "$h/.local/bin/$t"; done
+want=""
+for pair in ls:eza cat:bat lg:lazygit headers:xh; do
+  a=${pair%%:*}; t=${pair#*:}
+  if [ -x "/opt/homebrew/bin/$t" ]; then w=alias; elif [ "$a" = ls ] || [ "$a" = cat ]; then w=command; else w=none; fi
+  want="$want$a: $w "
+done
+out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'whence -w ls cat lg headers | tr "\n" " "' 2>&1)
+check_eq "zsh: no eza/bat/lazygit/xh aliases when the tools are absent" "$out" "$want"
 
 # Task 6: bin and vimrc
-for s in git-all git-amend git-copy-branch-name git-credit git-delete-local-merged git-nuke git-promote git-rank-contributors git-review git-track git-undo git-unpushed git-unpushed-stat git-up git-wtf e headers todo macos-defaults; do
+for s in git-all git-amend git-copy-branch-name git-credit git-delete-local-merged git-nuke git-promote git-rank-contributors git-review git-track git-undo git-unpushed git-unpushed-stat git-up git-wtf e todo macos-defaults; do
   if [ -x "$P/.local/bin/$s" ]; then pass "bin: $s executable"; else fail "bin: $s missing or not executable"; fi
 done
+check_nofile "$P/.local/bin/headers"
+check_grep ".chezmoiremove: old headers script" "$SRC/.chezmoiremove" '^\.local/bin/headers$'
 check_nofile "$P/.local/bin/dot"
 check_nofile "$P/.local/bin/gitio"
 check_grep "git-delete-local-merged keeps main" "$P/.local/bin/git-delete-local-merged" "main"

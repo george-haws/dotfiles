@@ -1,5 +1,5 @@
 # Order matters. Each file is sourced by name; nothing is globbed.
-for f in path env options aliases git nvm prompt completion; do
+for f in path env options aliases git nvm prompt completion tools plugins; do
   source "$ZDOTDIR/$f.zsh"
 done
 unset f
