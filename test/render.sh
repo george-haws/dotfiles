@@ -308,6 +308,13 @@ check_grep "README: chezmoi upgrade reminder" "$SRC/README.md" 'chezmoi upgrade'
 check_grep "README: SSH clone rule for private personal repos" "$SRC/README.md" 'private personal'
 check_nofile "$P/install.sh"
 check_nofile "$P/README.md"
+# Task 9 (2026-10-04): README covers the new tools
+check_grep "README: cask adopt step" "$SRC/README.md" 'brew install --cask --adopt iterm2 zed'
+check_grep "README: atuin import" "$SRC/README.md" 'atuin import auto'
+check_grep "README: capture after an app edits its settings" "$SRC/README.md" 'dotfiles-capture claude'
+check_fgrep "README: seed the local file from the backup" "$SRC/README.md" 'dotfiles-capture --from ~/.claude/settings.json.pre-chezmoi claude'
+check_grep "README: Nerd Font set by hand" "$SRC/README.md" 'JetBrains Mono Nerd Font'
+check_nogrep "README: re-add is not the route for app settings" "$SRC/README.md" 're-add ~/.claude'
 
 # Task 5 (2026-10-04): Claude Code and Zed settings
 check_nofile "$P/.shared"

@@ -28,7 +28,7 @@ Identity follows the repository's remote URL, not its directory. `~/src` holds w
 | gh selection | A `gh` shim script in `~/.local/bin`, rendered on the work machine only. |
 | chezmoi install | The binary in `~/.local/bin` from the official installer is canonical, updated with `chezmoi upgrade`. It is not in the Brewfile. |
 | Personal name and email | Hardcoded in the config template. Both already appear in the public commit history, so nothing new is exposed. |
-| Node | Keep nvm, lazy-loaded. Switching to mise is a separate decision. |
+| Node | nvm, lazy-loaded, until the mise changeset described in `2026-10-04-modern-cli-tools-design.md`. |
 | macOS defaults | Kept as a manual script, never run automatically. |
 
 ## Per-machine configuration
@@ -257,7 +257,7 @@ brew "nvm"
 brew "vim"
 ```
 
-Casks are out of scope.
+Casks were out of scope in this design; `2026-10-04-modern-cli-tools-design.md` adds three.
 
 Order on a fresh machine: `install.sh`, then `00-homebrew`, then `10-ssh-keys`, then files apply, then open a new shell.
 
