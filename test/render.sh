@@ -196,8 +196,19 @@ out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c '
 check_eq "zsh: no eza/bat/lazygit/xh aliases when the tools are absent" "$out" "$want"
 # The guards themselves, whatever this machine's Homebrew has: source the
 # integration files in a shell whose PATH holds none of the tools.
-out=$(env -i HOME="$h" TERM=xterm zsh -f -c 'path=(/usr/bin /bin /usr/sbin /sbin); for f in env aliases tools; do source "$HOME/.config/zsh/$f.zsh"; done; print -r -- "$(whence -w ls cat lg headers z | tr "\n" " ")${+FZF_DEFAULT_COMMAND} ${+MANPAGER}"' 2>&1)
-check_eq "zsh: guards skip every integration when no tool is on PATH" "$out" "ls: command cat: command lg: none headers: none z: none 0 0"
+out=$(env -i HOME="$h" TERM=xterm zsh -f -c 'path=(/usr/bin /bin /usr/sbin /sbin); for f in env aliases prompt tools; do source "$HOME/.config/zsh/$f.zsh"; done; print -r -- "$(whence -w ls cat lg headers z | tr "\n" " ")${+FZF_DEFAULT_COMMAND} ${+MANPAGER} ${+functions[prompt_starship_precmd]}"' 2>&1)
+check_eq "zsh: guards skip every integration when no tool is on PATH" "$out" "ls: command cat: command lg: none headers: none z: none 0 0 0"
+# Task 3 (2026-10-04): starship
+check_file "$P/.config/starship.toml"
+check_grep "starship: guarded init" "$P/.config/zsh/prompt.zsh" 'commands\[starship\].*starship init zsh'
+check_nogrep "prompt: hand-drawn PROMPT gone" "$P/.config/zsh/prompt.zsh" 'export PROMPT='
+check_nogrep "prompt: git helpers gone" "$P/.config/zsh/prompt.zsh" 'git_dirty|need_push|git_prompt_info'
+check_grep "prompt: window title kept" "$P/.config/zsh/prompt.zsh" '^title\(\)'
+check_grep "starship: clean branch green" "$P/.config/starship.toml" '^\[custom.branch_clean\]'
+check_grep "starship: dirty branch red" "$P/.config/starship.toml" '^\[custom.branch_dirty\]'
+check_grep "starship: unpushed marker" "$P/.config/starship.toml" 'with \[unpushed\]\(bold magenta\)'
+check_grep "starship: prompt character" "$P/.config/starship.toml" 'success_symbol = "›"'
+check_grep "starship: builtin git_branch off" "$P/.config/starship.toml" '^\[git_branch\]'
 
 # Task 6: bin and vimrc
 for s in git-all git-amend git-copy-branch-name git-credit git-delete-local-merged git-nuke git-promote git-rank-contributors git-review git-track git-undo git-unpushed git-unpushed-stat git-up git-wtf e todo macos-defaults; do
