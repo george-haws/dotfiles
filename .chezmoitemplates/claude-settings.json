@@ -1,0 +1,21 @@
+{
+  "agentPushNotifEnabled": false,
+  "enabledPlugins": {
+    "superpowers@superpowers-marketplace": true
+  },
+  "extraKnownMarketplaces": {
+    "superpowers-marketplace": {
+      "source": {
+        "repo": "obra/superpowers-marketplace",
+        "source": "github"
+      }
+    }
+  },
+  "model": "opus",
+  "modelSettings": {
+    "claude-fable-5-1": {
+      "effortLevel": "high"
+    }
+  },
+  "theme": "dark"
+}

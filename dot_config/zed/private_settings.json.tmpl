@@ -1,0 +1,11 @@
+{{- /*
+  Shared settings from .chezmoitemplates/zed-settings.json, overlaid with this
+  machine's ~/.config/chezmoi/zed-settings.local.json, which is never
+  committed. Keys in the local file win. dotfiles-capture writes the local file.
+*/ -}}
+{{- $s := include ".chezmoitemplates/zed-settings.json" | fromJsonc -}}
+{{- $localPath := joinPath .chezmoi.homeDir ".config/chezmoi/zed-settings.local.json" -}}
+{{- if stat $localPath -}}
+{{-   $s = mergeOverwrite $s (include $localPath | fromJsonc) -}}
+{{- end -}}
+{{ toPrettyJson "  " $s -}}

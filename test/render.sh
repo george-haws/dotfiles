@@ -9,8 +9,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 render() { # fixture-name
-  mkdir -p "$tmp/$1"
-  chezmoi --config "$SRC/test/fixtures/$1.toml" \
+  mkdir -p "$tmp/$1" "$tmp/$1-home"
+  HOME="$tmp/$1-home" chezmoi --config "$SRC/test/fixtures/$1.toml" \
           --source "$SRC" \
           --destination "$tmp/$1" \
           --persistent-state "$tmp/$1.boltdb" \
@@ -308,6 +308,47 @@ check_grep "README: chezmoi upgrade reminder" "$SRC/README.md" 'chezmoi upgrade'
 check_grep "README: SSH clone rule for private personal repos" "$SRC/README.md" 'private personal'
 check_nofile "$P/install.sh"
 check_nofile "$P/README.md"
+
+# Task 5 (2026-10-04): Claude Code and Zed settings
+check_nofile "$P/.chezmoitemplates"
+cshared="$SRC/.chezmoitemplates/claude-settings.json"
+zshared="$SRC/.chezmoitemplates/zed-settings.json"
+for t in personal work; do
+  c="$tmp/$t/.claude/settings.json"; z="$tmp/$t/.config/zed/settings.json"
+  check_file "$c"
+  check_file "$z"
+  check_eq "claude settings($t): the shared file when there is no local file" "$(jq -S . "$c" 2>&1)" "$(jq -S . "$cshared" 2>&1)"
+  check_eq "zed settings($t): the shared file when there is no local file" "$(jq -S . "$z" 2>&1)" "$(jq -S . "$zshared" 2>&1)"
+  check_mode "zed settings($t): 0600" "$z" "600"
+  check_eq "claude settings($t): only settings.json under .claude" "$(find "$tmp/$t/.claude" -type f | sed "s|$tmp/$t/.claude/||" | sort | tr '\n' ' ')" "settings.json "
+done
+check_eq "claude shared: no machine description" "$(jq 'has("autoMode")' "$cshared")" "false"
+check_eq "claude shared: no credential-like keys" "$(jq -r '[paths(scalars) | map(tostring) | join(".")] | .[]' "$cshared" | grep -c -i -E 'token|credential|apikey|secret|password')" "0"
+# A local file in ~/.config/chezmoi is merged over the shared one.
+oh="$tmp/overlay-home"; mkdir -p "$oh/.config/chezmoi"
+printf '{"autoMode":{"environment":"LOCAL"},"theme":"local-theme","permissions":{"allow":["Bash(local:*)","Bash(local:*)"],"deny":["Read(.env)"]}}\n' > "$oh/.config/chezmoi/claude-settings.local.json"
+printf '// Zed allows comments\n{"base_keymap": "local-keymap", "local_only": {"x": 1},}\n' > "$oh/.config/chezmoi/zed-settings.local.json"
+overlay() { HOME="$oh" chezmoi --config "$SRC/test/fixtures/work.toml" --source "$SRC" --persistent-state "$tmp/overlay.boltdb" execute-template < "$SRC/$1"; }
+oc=$(overlay dot_claude/settings.json.tmpl)
+check_eq "claude overlay: local value wins" "$(printf '%s' "$oc" | jq -r .theme)" "local-theme"
+check_eq "claude overlay: local-only key" "$(printf '%s' "$oc" | jq -r .autoMode.environment)" "LOCAL"
+check_eq "claude overlay: shared keys kept" "$(printf '%s' "$oc" | jq -S 'del(.theme, .autoMode, .permissions)')" "$(jq -S 'del(.theme, .permissions)' "$cshared")"
+check_eq "claude overlay: allow lists unioned, no duplicates" "$(printf '%s' "$oc" | jq -c .permissions.allow)" "$(jq -c '(.permissions.allow // []) + ["Bash(local:*)"]' "$cshared")"
+check_eq "claude overlay: deny from the local file" "$(printf '%s' "$oc" | jq -c .permissions.deny)" '["Read(.env)"]'
+oz=$(overlay dot_config/zed/private_settings.json.tmpl)
+check_eq "zed overlay: local value wins, comments allowed" "$(printf '%s' "$oz" | jq -r .base_keymap)" "local-keymap"
+check_eq "zed overlay: local-only key" "$(printf '%s' "$oz" | jq -c .local_only)" '{"x":1}'
+check_eq "zed overlay: shared keys kept" "$(printf '%s' "$oz" | jq -S 'del(.base_keymap, .local_only)')" "$(jq -S 'del(.base_keymap)' "$zshared")"
+# The first apply on a machine replaces these files, so a run_once script keeps the originals.
+bk="$SRC/run_once_before_20-settings-backup.sh"
+if sh -n "$bk"; then pass "backup script: sh -n"; else fail "backup script: syntax"; fi
+bh="$tmp/backup-home"; mkdir -p "$bh/.claude"
+echo '{"a":1}' > "$bh/.claude/settings.json"
+HOME="$bh" sh "$bk" >/dev/null
+check_eq "backup: existing claude settings copied" "$(cat "$bh/.claude/settings.json.pre-chezmoi" 2>&1)" '{"a":1}'
+check_nofile "$bh/.config/zed/settings.json.pre-chezmoi"
+echo '{"a":2}' > "$bh/.claude/settings.json"; HOME="$bh" sh "$bk" >/dev/null
+check_eq "backup: an earlier backup is never overwritten" "$(cat "$bh/.claude/settings.json.pre-chezmoi")" '{"a":1}'
 
 # Task 9: doctor
 for t in personal work; do

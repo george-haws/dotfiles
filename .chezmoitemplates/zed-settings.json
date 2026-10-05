@@ -1,0 +1,28 @@
+{
+  "agent": {
+    "favorite_models": [],
+    "model_parameters": [],
+    "sidebar_side": "right"
+  },
+  "agent_servers": {
+    "claude-acp": {
+      "default_config_options": {
+        "fast": true,
+        "mode": "bypassPermissions",
+        "model": "claude-fable-5-1[1m]"
+      },
+      "type": "registry"
+    }
+  },
+  "base_keymap": "VSCode",
+  "buffer_font_size": 15,
+  "session": {
+    "trust_all_worktrees": true
+  },
+  "theme": {
+    "dark": "One Dark",
+    "light": "One Light",
+    "mode": "system"
+  },
+  "ui_font_size": 16
+}
