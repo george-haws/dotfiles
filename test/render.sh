@@ -194,6 +194,10 @@ for pair in ls:eza cat:bat lg:lazygit headers:xh; do
 done
 out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'whence -w ls cat lg headers | tr "\n" " "' 2>&1)
 check_eq "zsh: no eza/bat/lazygit/xh aliases when the tools are absent" "$out" "$want"
+# The guards themselves, whatever this machine's Homebrew has: source the
+# integration files in a shell whose PATH holds none of the tools.
+out=$(env -i HOME="$h" TERM=xterm zsh -f -c 'path=(/usr/bin /bin /usr/sbin /sbin); for f in env aliases tools; do source "$HOME/.config/zsh/$f.zsh"; done; print -r -- "$(whence -w ls cat lg headers z | tr "\n" " ")${+FZF_DEFAULT_COMMAND} ${+MANPAGER}"' 2>&1)
+check_eq "zsh: guards skip every integration when no tool is on PATH" "$out" "ls: command cat: command lg: none headers: none z: none 0 0"
 
 # Task 6: bin and vimrc
 for s in git-all git-amend git-copy-branch-name git-credit git-delete-local-merged git-nuke git-promote git-rank-contributors git-review git-track git-undo git-unpushed git-unpushed-stat git-up git-wtf e todo macos-defaults; do
