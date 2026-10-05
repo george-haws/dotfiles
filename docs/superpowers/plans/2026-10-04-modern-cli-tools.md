@@ -31,7 +31,7 @@
 2. **Source order.** `path env options aliases git nvm prompt completion tools plugins`. `tools.zsh` comes after `completion.zsh` because zoxide registers its `z` completion only when compinit has already run. atuin's Ctrl-R wins because it comes after fzf inside `tools.zsh`. `plugins.zsh` is last because syntax highlighting wraps every ZLE widget defined before it. Task 2 pins the exact order string.
 3. **Status line outside a repo, without an upstream, and beside Claude Code's own git.** `git rev-parse` fails outside a repo, and `@{upstream}` fails on a branch with no upstream. The script must print a sane line in both cases and never leak git's stderr. It also sets `GIT_OPTIONAL_LOCKS=0`, so its `git status` never holds `.git/index.lock` while Claude Code commits. Task 7 tests all three repo states.
 4. **Work values never reach the public repo.** They live in local files outside the source tree. `chezmoi re-add` skips templates, and `dotfiles-capture --shared` refuses when chezmoi's `work` is true. Tasks 5 and 6.
-5. **Capturing the right side.** chezmoi records a hash of what it last wrote. `dotfiles-capture` compares it with the live file and the rendered file, captures only what changed in place, and refuses to guess when both sides moved. Task 6 tests each case.
+5. **Capturing the right side.** chezmoi records a hash of what it last wrote. `dotfiles-capture` compares it with the live file and the rendered file, captures only what changed in place, and refuses to guess when both sides moved. It writes only the part of each key that differs from the shared file, so the shared file's later changes still arrive, including a permission it drops. Task 6 tests each case.
 6. **The first apply on a machine that already has settings.** chezmoi overwrites a file it has never written without asking. A `run_once_before` script keeps `.pre-chezmoi` copies, and `dotfiles-capture --from` moves their values into the local file. Tasks 5, 6, and 10.
 7. **Casks already present.** iTerm2 and Zed are in `/Applications` from manual downloads. `brew bundle` refuses to install over them, so Task 10 adopts them by hand first.
 
@@ -51,13 +51,13 @@
 In `test/render.sh`, replace the line
 
 ```sh
-for pkg in coreutils gh git git-lfs go grc nvm vim; do check_grep "Brewfile: $pkg" "$P/Brewfile" "brew \"$pkg\""; done
+for pkg in coreutils gh git git-lfs go grc nvm uv vim; do check_grep "Brewfile: $pkg" "$P/Brewfile" "brew \"$pkg\""; done
 ```
 
 with
 
 ```sh
-for pkg in coreutils gh git git-lfs go grc nvm vim \
+for pkg in coreutils gh git git-lfs go grc nvm uv vim \
            node yarn cocoapods mobile-dev-inc/tap/maestro facebook/fb/idb-companion openjdk ruby spark \
            ripgrep fd fzf bat eza zoxide zsh-autosuggestions zsh-syntax-highlighting atuin starship xh \
            git-delta difftastic lazygit git-absorb; do
@@ -90,6 +90,7 @@ brew "git-lfs"
 brew "go"
 brew "grc"
 brew "nvm"
+brew "uv"
 brew "vim"
 
 # Installed by hand before 2026-10-04. The mise changeset removes node and yarn.
@@ -797,12 +798,13 @@ git commit -m "Render Claude Code and Zed settings from a shared file and a loca
 - Produces: `dotfiles-capture [--check] [--shared] [--from FILE] claude|zed [KEY...]`. Task 8's doctor runs `--check`; the README and Task 10 use the rest.
 
 What it does:
-- **Default:** copies every top-level key that differs from what chezmoi would write into the local file, or only the named KEYs.
+- **Default:** for every top-level key that differs from what chezmoi would write, or only the named KEYs, writes the part that differs from the shared file into the local file. A map keeps only its differing entries. A Claude Code permission list keeps only the rules the shared file lacks, because the template unions those lists; copying the whole list would keep granting a rule the shared file later drops. A key whose live value equals the shared one leaves the local file.
 - **`--shared`:** moves those keys into the shared file and out of the local one. Refused when chezmoi's `work` is true.
 - **`--from FILE`:** reads the values from FILE instead of the live file, then applies the target.
 - **`--check`:** changes nothing; lists the differing keys, says which side moved, and exits 1.
-- **Which side moved:** chezmoi records a SHA-256 of what it last wrote. The script compares that with the live file and the rendered file. If only the repo side moved, it captures nothing and says to apply. If both moved, it refuses unless KEYs are named.
-- **Afterwards:** when the rendered file matches the live file, it rewrites the live file in chezmoi's layout with `chezmoi apply --force` on that one target, so the doctor stays quiet. Keys removed in place are reported, never captured.
+- **Which side moved:** chezmoi records a SHA-256 of what it last wrote. The script compares that with the live file and the rendered file. If only the repo side moved, it captures nothing and says to apply. If both moved, it refuses unless KEYs are named, and it reports a key missing from the live file as either the repo's addition or an in-place deletion, since it cannot tell which.
+- **Afterwards:** when the rendered file matches the live file, it rewrites the live file in chezmoi's layout with `chezmoi apply --force` on that one target, so `chezmoi apply` stops asking about it. It does the same when an app rewrote the file with the same values in another layout. Keys removed in place are reported, never captured.
+- **Paths:** a relative `--from` path is made absolute first, because chezmoi's `include` would read it from the source directory.
 
 - [ ] **Step 1: Write the assertions**
 
@@ -814,9 +816,13 @@ cap="$P/.local/bin/dotfiles-capture"
 check_file "$cap"
 [ -x "$cap" ] && pass "capture: executable" || fail "capture: not executable"
 sh -n "$cap" && pass "capture: sh -n" || fail "capture: syntax"
-# A scratch copy of the source, because --shared writes to it, and a chezmoi
-# wrapper that points every call at that copy and at a fake home.
+# A scratch copy of the source, because --shared writes to it. Its shared files
+# belong to these tests, so editing the real ones never breaks them. A chezmoi
+# wrapper points every call the script makes at that copy and at a fake home.
 cs="$tmp/capture-src"; mkdir -p "$cs"; (cd "$SRC" && tar --exclude .git -cf - .) | (cd "$cs" && tar -xf -)
+csh="$cs/.chezmoitemplates/claude-settings.json"
+echo '{"enabledPlugins":{"a@m":true,"b@m":true},"model":"shared-model","permissions":{"allow":["Bash(ls:*)","Bash(rm:*)"]},"theme":"dark"}' > "$csh"
+echo '{"base_keymap":"VSCode","ui_font_size":16}' > "$cs/.chezmoitemplates/zed-settings.json"
 cb="$tmp/capture-bin"; mkdir -p "$cb"
 use_machine() { # fixture-name; sets $ch, the fake home
   ch="$tmp/capture-$1"; mkdir -p "$ch"
@@ -827,8 +833,8 @@ use_machine() { # fixture-name; sets $ch, the fake home
 capture() { HOME="$ch" PATH="$cb:$PATH" "$cap" "$@" 2>&1; }
 cz() { HOME="$ch" PATH="$cb:$PATH" chezmoi "$@"; }
 setjson() { jq "$2" "$1" > "$tmp/setjson" && cat "$tmp/setjson" > "$1"; }
-cl() { jq -r "$1" "$ch/.config/chezmoi/claude-settings.local.json" 2>&1; }
-zl() { jq -r "$1" "$ch/.config/chezmoi/zed-settings.local.json" 2>&1; }
+cl() { jq -c -r "$1" "$ch/.config/chezmoi/claude-settings.local.json" 2>&1; }
+zl() { jq -c -r "$1" "$ch/.config/chezmoi/zed-settings.local.json" 2>&1; }
 
 use_machine work
 mkdir -p "$ch/.claude"
@@ -837,36 +843,59 @@ capture claude >/dev/null; rc=$?
 check_eq "capture: refused before chezmoi has written the file" "$rc" "1"
 HOME="$ch" sh "$SRC/run_once_before_20-settings-backup.sh" >/dev/null
 cz apply --force "$ch/.claude/settings.json"
-capture --from "$ch/.claude/settings.json.pre-chezmoi" claude >/dev/null; rc=$?
-check_eq "capture --from backup: exit 0" "$rc" "0"
+(cd "$ch/.claude" && capture --from settings.json.pre-chezmoi claude) >/dev/null; rc=$?
+check_eq "capture --from a relative backup path: exit 0" "$rc" "0"
 check_eq "capture --from backup: work values seeded into the local file" "$(cl '.model + " " + .autoMode.environment')" "work-model WORK"
+check_eq "capture --from backup: only the permissions the shared file lacks" "$(cl .permissions.allow)" '["Bash(worktool:*)"]'
 check_mode "capture: local file is 0600" "$ch/.config/chezmoi/claude-settings.local.json" "600"
 capture --check claude >/dev/null; rc=$?
 check_eq "capture --from backup: live file matches the repo afterwards" "$rc" "0"
 
-setjson "$ch/.claude/settings.json" '.spinnerTipsEnabled = false'
+setjson "$ch/.claude/settings.json" '.testFlag = false'
 out=$(capture --check claude); rc=$?
 check_eq "capture --check: in-place change exits 1" "$rc" "1"
-case "$out" in *"changed in place"*spinnerTipsEnabled*) pass "capture --check: names the side and the key";; *) fail "capture --check: got '$out'";; esac
-before=$(cat "$cs/.chezmoitemplates/claude-settings.json")
+case "$out" in *"changed in place"*testFlag*) pass "capture --check: names the side and the key";; *) fail "capture --check: got '$out'";; esac
+before=$(cat "$csh")
 capture --shared claude >/dev/null; rc=$?
 check_eq "capture --shared: refused on a work machine" "$rc" "1"
-check_eq "capture --shared: shared file untouched on a work machine" "$(cat "$cs/.chezmoitemplates/claude-settings.json")" "$before"
+check_eq "capture --shared: shared file untouched on a work machine" "$(cat "$csh")" "$before"
 capture claude >/dev/null; rc=$?
 check_eq "capture: exit 0" "$rc" "0"
-check_eq "capture: in-place key lands in the local file" "$(cl .spinnerTipsEnabled)" "false"
+check_eq "capture: in-place key lands in the local file" "$(cl .testFlag)" "false"
 capture --check claude >/dev/null; rc=$?
 check_eq "capture: live file matches the repo afterwards" "$rc" "0"
 
-setjson "$cs/.chezmoitemplates/claude-settings.json" '.effortLevel = "high"'
+# Only what differs from the shared file goes into the local file, so the
+# shared file's later changes still arrive, including a permission it drops.
+setjson "$ch/.claude/settings.json" '.permissions.allow += ["Bash(git:*)"] | .enabledPlugins["b@m"] = false'
+capture claude >/dev/null
+check_eq "capture: a permission list keeps only the rules the shared file lacks" "$(cl .permissions.allow)" '["Bash(worktool:*)","Bash(git:*)"]'
+check_eq "capture: a map keeps only its differing entries" "$(cl .enabledPlugins)" '{"b@m":false}'
+setjson "$csh" '.permissions.allow -= ["Bash(rm:*)"]'
+check_eq "capture: a permission the shared file drops is no longer granted" "$(cz cat "$ch/.claude/settings.json" | jq -c .permissions.allow)" '["Bash(ls:*)","Bash(worktool:*)","Bash(git:*)"]'
+cz apply --force "$ch/.claude/settings.json"
+
+# An app rewrites the file with the same values in another layout.
+jq -c . "$ch/.claude/settings.json" > "$tmp/compact" && cat "$tmp/compact" > "$ch/.claude/settings.json"
+capture claude >/dev/null; rc=$?
+check_eq "capture: a layout-only rewrite exits 0" "$rc" "0"
+cz verify "$ch/.claude/settings.json" >/dev/null 2>&1; rc=$?
+check_eq "capture: a layout-only rewrite gets chezmoi's layout back" "$rc" "0"
+
+setjson "$csh" '.repoKey = "repo"'
 out=$(capture claude)
 case "$out" in *"nothing changed in place"*) pass "capture: a repo-side change is not captured";; *) fail "capture: repo-side change: got '$out'";; esac
 setjson "$ch/.claude/settings.json" '.theme = "in-place"'
 capture claude >/dev/null; rc=$?
 check_eq "capture: both sides changed and no KEY -> refused" "$rc" "1"
-capture claude theme >/dev/null
+out=$(capture claude theme)
 check_eq "capture KEY: the named key is captured" "$(cl .theme)" "in-place"
-check_eq "capture KEY: the repo-side key is not" "$(cl 'has("effortLevel")')" "false"
+check_eq "capture KEY: the repo-side key is not" "$(cl 'has("repoKey")')" "false"
+case "$out" in
+  *"removed in place"*) fail "capture KEY: a key the repo added is called removed in place";;
+  *"added in the repo or deleted in place"*repoKey*) pass "capture KEY: a key the repo added may be the repo's";;
+  *) fail "capture KEY: got '$out'";;
+esac
 cz apply --force "$ch/.claude/settings.json"
 setjson "$ch/.claude/settings.json" 'del(.theme)'
 out=$(capture claude)
@@ -891,12 +920,12 @@ capture --check zed >/dev/null; rc=$?
 check_eq "capture --shared: live file matches the repo afterwards" "$rc" "0"
 ```
 
-The tests run the script against a copy of the source and a fake home. A wrapper named `chezmoi`, first on PATH, adds `--config`, `--source`, `--destination`, and `--persistent-state` to every call the script makes.
+The tests run the script against a copy of the source and a fake home. A wrapper named `chezmoi`, first on PATH, adds `--config`, `--source`, `--destination`, and `--persistent-state` to every call the script makes. The copy's two shared files are replaced with small ones the tests own, so later edits to the real shared files cannot break these assertions. `testFlag` and `repoKey` are made-up keys for the same reason.
 
 - [ ] **Step 2: Run the suite to see the new assertions fail**
 
 Run: `./test/render.sh | grep FAIL`
-Expected: 27 failures, all `capture`, because the script does not exist yet.
+Expected: 34 failures, all `capture`, because the script does not exist yet.
 
 - [ ] **Step 3: Write the script**
 
@@ -910,8 +939,12 @@ Create `dot_local/bin/executable_dotfiles-capture`:
 #
 #   dotfiles-capture [--check] [--shared] [--from FILE] claude|zed [KEY...]
 #
-# Copies the top-level keys that differ from what chezmoi would write into the
-# local file, so nothing reaches the repo. With KEYs, copies only those.
+# For each top-level key that differs from what chezmoi would write, or each
+# named KEY, writes the part that differs from the shared file into the local
+# file, so nothing reaches the repo. A map keeps only its differing entries
+# and a Claude Code permission list only the rules the shared file lacks, so
+# the shared file's other values, and a permission it later drops, still reach
+# this machine.
 #   --shared  move the keys into the shared file instead. Refused on a work
 #             machine, because the repo is public.
 #   --from    read values from FILE instead of the live file, to seed the local
@@ -945,11 +978,17 @@ name=$1; shift
 local_file="$HOME/.config/chezmoi/$name-settings.local.json"
 shared_file="$(chezmoi source-path)/.chezmoitemplates/$name-settings.json"
 src=${from:-$target}
+# chezmoi's include reads a relative path from the source directory, not from here.
+case $src in /*) ;; *) src="$PWD/$src" ;; esac
 [ -f "$src" ] || { echo "dotfiles-capture: $src does not exist" >&2; exit 1; }
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 # Zed allows comments and trailing commas. chezmoi parses those; jq does not.
-parse() { F="$1" chezmoi execute-template '{{ include (env "F") | fromJsonc | toJson }}' | jq -S .; }
+# No pipe, so a file chezmoi cannot parse stops the script with chezmoi's error.
+parse() {
+  F="$1" chezmoi execute-template '{{ include (env "F") | fromJsonc | toJson }}' > "$tmp/parsed"
+  jq -S . "$tmp/parsed"
+}
 render() { chezmoi cat "$target" > "$tmp/rendered.raw"; jq -S . "$tmp/rendered.raw" > "$tmp/rendered.json"; }
 differing() { # top-level keys present in the source whose value differs from rendered
   jq -r -n --slurpfile l "$tmp/live.json" --slurpfile r "$tmp/rendered.json" \
@@ -961,6 +1000,16 @@ removed() { # top-level keys rendered but absent from the source
 }
 words() { tr '\n' ' ' | sed 's/ $//'; }
 sha() { shasum -a 256 "$1" | cut -c1-64; }
+# Keys rendered but missing from the live file. Once the repo has changed as
+# well, a missing key may be one the repo added, so say both.
+report_gone() {
+  [ -n "$gone" ] || return 0
+  if $repo_moved; then
+    echo "$name: missing from the live file, added in the repo or deleted in place: $(echo "$gone" | words). For the repo's, chezmoi apply $target; for deleted ones, delete them by hand from $shared_file or $local_file."
+  else
+    echo "$name: removed in place, delete by hand from $shared_file or $local_file: $(echo "$gone" | words)"
+  fi
+}
 
 parse "$src" > "$tmp/live.json"
 render
@@ -992,20 +1041,23 @@ elif [ -z "$last" ]; then
 elif ! $live_moved; then
   echo "$name: nothing changed in place. Any difference comes from the repo: chezmoi apply $target"
   exit 0
-elif $repo_moved; then
+elif $repo_moved && [ -n "$changed" ]; then
   echo "dotfiles-capture: both the live file and the repo changed since the last apply, so these could be either: $(echo "$changed" | words). Name the keys you changed in place: dotfiles-capture $name KEY..." >&2
   exit 1
 else
   keys=$changed
 fi
 if [ -z "$keys" ]; then
-  [ -n "$gone" ] && echo "$name: removed in place, delete by hand from $shared_file or $local_file: $(echo "$gone" | words)"
+  [ -n "$from" ] || report_gone
   echo "$name: nothing to capture"
+  # The live file holds the repo's values in another layout, as when an app
+  # rewrites it unchanged. Put chezmoi's layout back so chezmoi apply stops
+  # asking about it.
+  [ -z "$from$gone" ] && chezmoi apply --force "$target"
   exit 0
 fi
 
 printf '%s\n' "$keys" | jq -R . | jq -s . > "$tmp/keys.json"
-jq --slurpfile k "$tmp/keys.json" 'with_entries(select(.key | IN($k[0][])))' "$tmp/live.json" > "$tmp/delta.json"
 if [ -f "$local_file" ]; then parse "$local_file" > "$tmp/local.json"; else echo '{}' > "$tmp/local.json"; fi
 
 if $shared; then
@@ -1013,6 +1065,7 @@ if $shared; then
     echo "dotfiles-capture: --shared is refused on a work machine; the repo is public. Nothing captured." >&2
     exit 1
   fi
+  jq --slurpfile k "$tmp/keys.json" 'with_entries(select(.key | IN($k[0][])))' "$tmp/live.json" > "$tmp/delta.json"
   jq -s '.[0] + .[1]' "$shared_file" "$tmp/delta.json" > "$tmp/shared.new"
   cat "$tmp/shared.new" > "$shared_file"
   # The shared file owns these keys now; a local copy would shadow them.
@@ -1022,13 +1075,30 @@ if $shared; then
   fi
   dest="$shared_file (commit it in the repo)"
 else
+  # Keep only what differs from the shared file. Copying a whole value would
+  # shadow the shared file's later changes to it; for the permission lists,
+  # which the template unions, it would keep granting a rule the shared file
+  # drops. A key whose live value equals the shared one leaves the local file.
+  jq -S . "$shared_file" > "$tmp/shared.json"
+  jq -S --arg app "$name" --slurpfile k "$tmp/keys.json" \
+     --slurpfile v "$tmp/live.json" --slurpfile s "$tmp/shared.json" '
+    def overlay($live; $base; $path):
+      if ($live | type) == "object" and ($base | type) == "object" then
+        reduce ($live | keys[]) as $x ({};
+          if $live[$x] == $base[$x] then . else .[$x] = overlay($live[$x]; $base[$x]; $path + [$x]) end)
+      elif $app == "claude" and $path[0] == "permissions" and ($path | length) == 2
+           and ($path[1] | IN("allow", "ask", "deny", "additionalDirectories")) then
+        $live - ($base // [])
+      else $live end;
+    reduce ($k[0][] | select(. as $x | $v[0] | has($x))) as $key (.;
+      if $v[0][$key] == $s[0][$key] then del(.[$key])
+      else .[$key] = overlay($v[0][$key]; $s[0][$key]; [$key]) end)' \
+    "$tmp/local.json" > "$tmp/local.new"
   mkdir -p "$(dirname "$local_file")"
-  jq -S -s '.[0] + .[1]' "$tmp/local.json" "$tmp/delta.json" > "$tmp/local.new"
   (umask 077 && cat "$tmp/local.new" > "$local_file")
   dest=$local_file
 fi
 echo "$name: captured $(echo "$keys" | words) into $dest"
-[ -z "$from" ] && [ -n "$gone" ] && echo "$name: removed in place, delete by hand from $shared_file or $local_file: $(echo "$gone" | words)"
 
 render
 if [ -n "$from" ]; then
@@ -1036,11 +1106,12 @@ if [ -n "$from" ]; then
   exit 0
 fi
 still=$(differing)
+report_gone
 if [ -z "$still$gone" ]; then
-  # Same content as the live file, in chezmoi's layout, so the doctor stays quiet.
+  # Same content as the live file, in chezmoi's layout, so chezmoi apply stops asking about it.
   chezmoi apply --force "$target"
 else
-  echo "$name: still differs from the repo: $(printf '%s\n' "$still" "$gone" | sed '/^$/d' | words). Review with chezmoi diff $target." >&2
+  [ -n "$still" ] && echo "$name: still differs from the repo: $(echo "$still" | words). Review with chezmoi diff $target." >&2
   exit 1
 fi
 ```
@@ -1436,13 +1507,14 @@ cd ~/.dotfiles && git status
 
 Expected: the prompt reads `in .dotfiles on master` with the branch green and `›` on the next line. Ctrl-R opens atuin, Ctrl-T opens fzf, `ls` is eza output, `cat README.md` is highlighted, `git log -p -1` pages through delta, and `z dot<TAB>` completes.
 
-- [ ] **Step 8: Run the doctor**
+- [ ] **Step 8: Run the suite and the doctor**
 
 ```bash
+cd ~/.dotfiles && ./test/render.sh | tail -1
 dotfiles-doctor
 ```
 
-Expected: `all checks passed`, with startup still well under 0.3s. If a `claude settings differ` or `zed settings differ` warning appears, run the command it names.
+Expected: `all checks passed` from both, with startup still well under 0.3s. Until now every tool was absent, so the suite's bare-shell tests only ever skipped the integrations. `path.zsh` puts `/opt/homebrew/bin` on PATH even in that bare shell, so this run is the first to load the real starship, atuin, fzf, and zoxide init code there. A failure in `zsh: starts with no Homebrew` now means an init line misbehaves with its tool present. If a `claude settings differ` or `zed settings differ` warning appears, run the command it names.
 
 - [ ] **Step 9: Set the terminal font**
 

@@ -51,6 +51,7 @@ brew "git-lfs"
 brew "go"
 brew "grc"
 brew "nvm"
+brew "uv"
 brew "vim"
 
 # Installed by hand before this change; the mise changeset removes node and yarn
@@ -171,8 +172,8 @@ Claude Code rewrites `~/.claude/settings.json` on `/model`, `/config`, and plugi
 - **Local values** live in `~/.config/chezmoi/claude-settings.local.json` and `~/.config/chezmoi/zed-settings.local.json`. They sit next to `chezmoi.toml`, outside the source tree, mode 0600, and are never committed.
 - **The templates** render the shared file with the local file merged over it. Maps merge key by key and the local file wins. Claude Code's `permissions.allow`, `ask`, `deny`, and `additionalDirectories` are unioned instead, matching how Claude Code merges lists across its own settings files. The output is sorted two-space JSON. Zed's comments are dropped once, when its shared file is made.
 - **`chezmoi re-add` skips templates**, so it cannot carry work values into the repo.
-- **`dotfiles-capture [--check] [--shared] [--from FILE] claude|zed [KEY...]`** keeps changes made in place. It copies every top-level key that differs from the rendered file into the local file, or only the named KEYs. `--shared` moves them into the shared file and out of the local one, and it refuses when chezmoi's `work` is true.
-- **Which side moved.** chezmoi records a SHA-256 of what it last wrote, and `dotfiles-capture` compares that with the live and rendered files. If only the repo side moved, it captures nothing and says to apply. If both moved, it refuses unless KEYs are named. After a capture that leaves the rendered file equal to the live one, it rewrites the live file in chezmoi's layout so the doctor stays quiet. `--check` lists the differing keys and the side that moved, for the doctor.
+- **`dotfiles-capture [--check] [--shared] [--from FILE] claude|zed [KEY...]`** keeps changes made in place. For every top-level key that differs from the rendered file, or only the named KEYs, it writes the part that differs from the shared file into the local file: a map keeps only its differing entries, and a Claude Code permission list only the rules the shared file lacks. Copying whole values would shadow the shared file's later changes, and would keep granting a permission the shared file drops. `--shared` moves them into the shared file and out of the local one, and it refuses when chezmoi's `work` is true.
+- **Which side moved.** chezmoi records a SHA-256 of what it last wrote, and `dotfiles-capture` compares that with the live and rendered files. If only the repo side moved, it captures nothing and says to apply. If both moved, it refuses unless KEYs are named, and it reports a key missing from the live file as either the repo's addition or an in-place deletion. After a capture that leaves the rendered file equal to the live one, or when an app rewrote the file with the same values in another layout, it rewrites the live file in chezmoi's layout so `chezmoi apply` stops asking about it. A relative `--from` path is read from the current directory. `--check` lists the differing keys and the side that moved, for the doctor.
 - **The first apply on a machine** overwrites a settings file chezmoi has never written, without asking. So `run_once_before_20-settings-backup.sh` first copies each existing file to `<file>.pre-chezmoi`, never overwriting an earlier backup. `dotfiles-capture --from <backup>` then moves that machine's values into its local file. Where the script can run before the first apply, `--from` the live file does the same without the round trip.
 
 Two limits. A key removed in place is reported, not captured; delete it by hand from the shared or local file. A permission removed in place stays granted while the shared file grants it.
@@ -230,11 +231,13 @@ Additions to `test/render.sh`, for both the personal and work trees unless noted
 - The backup script copies an existing settings file once and never overwrites an earlier backup.
 - `dotfiles-capture`, run against a scratch copy of the source and a fake home through a chezmoi wrapper:
   - refuses before chezmoi has written the file;
-  - seeds the local file `--from` a backup;
+  - seeds the local file `--from` a backup given as a relative path;
   - captures an in-place change into the local file and leaves the live file matching;
+  - keeps only the permission rules and map entries that differ from the shared file, so a permission the shared file drops is no longer granted;
+  - puts chezmoi's layout back after an app rewrites the file with the same values;
   - refuses `--shared` on a work machine without touching the shared file;
   - captures nothing when only the repo changed;
-  - when both sides changed, refuses without KEYs and captures only a named KEY;
+  - when both sides changed, refuses without KEYs, captures only a named KEY, and does not call a key the repo added removed in place;
   - reports a key removed in place;
   - on a personal machine, `--shared` moves a Zed key into the shared file and out of the local one, starting from a live file with comments.
 - The status line script exports `GIT_OPTIONAL_LOCKS=0`. Run against a temp git repo with one unpushed commit over a stubbed upstream, it prints `x on main with unpushed`; after pushing, `x on main`; against a non-repo directory, the directory name.
