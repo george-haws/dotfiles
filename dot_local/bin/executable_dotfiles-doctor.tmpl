@@ -1,6 +1,7 @@
 #!/bin/sh
 # Verifies the live machine: git identity by remote, SSH keys, gh account,
-# signing, PATH, shell startup, and chezmoi freshness. Exit 1 on any failure.
+# signing, PATH, the Brewfile, config drift, the Claude Code status line,
+# shell startup, and chezmoi freshness. Exit 1 on any failure.
 set -u
 
 work={{ .work }}
@@ -71,6 +72,32 @@ check "uv resolves to Homebrew" "$(command -v uv)" "/opt/homebrew/bin/uv"
 case ":$PATH:" in *:./bin:*) fail "PATH contains ./bin" ;; *) pass "no ./bin in PATH" ;; esac
 dups=$(printf '%s\n' "$PATH" | tr ':' '\n' | sort | uniq -d | tr '\n' ' ')
 if [ -z "$dups" ]; then pass "no duplicate PATH entries"; else fail "duplicate PATH entries: $dups"; fi
+
+echo "brew"
+if brew bundle check --file "{{ .chezmoi.sourceDir }}/Brewfile" --no-upgrade --verbose >"$tmp/bundle.out" 2>&1; then
+  pass "Brewfile satisfied"
+else
+  fail "Brewfile not satisfied: $(sed -n 's/^→ //p' "$tmp/bundle.out" | tr '\n' ' ')"
+fi
+for t in rg fd fzf bat eza zoxide atuin starship xh delta difft lazygit git-absorb; do
+  if command -v "$t" >/dev/null 2>&1; then pass "$t on PATH"; else fail "$t missing"; fi
+done
+
+echo "managed config"
+if chezmoi verify ~/.config/starship.toml ~/.config/atuin/config.toml >/dev/null 2>&1; then
+  pass "starship and atuin config match source"
+else
+  warn "starship or atuin config drifted: chezmoi diff, then chezmoi re-add <file> or chezmoi apply"
+fi
+for app in claude zed; do
+  if out=$("$HOME/.local/bin/dotfiles-capture" --check "$app" 2>&1); then pass "$app settings match source"; else warn "$out"; fi
+done
+
+echo "claude status line"
+check "settings.json statusLine command" "$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)" "~/.local/bin/claude-statusline"
+if [ -x "$HOME/.local/bin/claude-statusline" ]; then pass "claude-statusline executable"; else fail "claude-statusline missing or not executable"; fi
+sl_out=$(printf '{"workspace":{"current_dir":"%s"}}' "$HOME/.dotfiles" | "$HOME/.local/bin/claude-statusline" 2>/dev/null)
+case "$sl_out" in *dotfiles*" on "*) pass "claude-statusline prints repo and branch" ;; *) fail "claude-statusline output: '$sl_out'" ;; esac
 
 echo "startup"
 secs=$(zsh -c 'zmodload zsh/datetime; s=$EPOCHREALTIME; for i in 1 2 3 4 5; do zsh -i -c exit; done; printf "%.3f" $(( (EPOCHREALTIME - s) / 5 ))')

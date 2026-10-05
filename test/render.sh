@@ -514,5 +514,14 @@ check_nogrep "doctor(personal): no work email" "$P/.local/bin/dotfiles-doctor" '
 check_fgrep "doctor: https personal remote case" "$W/.local/bin/dotfiles-doctor" 'https://github.com/$owner/x.git'
 check_grep "doctor: chezmoi version check" "$W/.local/bin/dotfiles-doctor" 'releases/latest'
 check_grep "doctor: version check is a warning" "$W/.local/bin/dotfiles-doctor" 'warn "chezmoi'
+# Task 8 (2026-10-04): new doctor checks
+d="$P/.local/bin/dotfiles-doctor"
+check_fgrep "doctor: brew bundle check lists what is missing" "$d" "brew bundle check --file \"$SRC/Brewfile\" --no-upgrade --verbose"
+check_grep "doctor: new tools on PATH" "$d" 'for t in rg fd fzf bat eza zoxide atuin starship xh delta difft lazygit git-absorb'
+check_grep "doctor: chezmoi verify on starship and atuin" "$d" 'chezmoi verify ~/.config/starship.toml ~/.config/atuin/config.toml'
+check_grep "doctor: settings drift through dotfiles-capture" "$d" 'dotfiles-capture" --check "\$app"'
+check_grep "doctor: settings drift is a warning" "$d" 'warn "\$out"'
+check_grep "doctor: statusLine wired" "$d" "jq -r '.statusLine.command // empty'"
+check_grep "doctor: statusline runs" "$d" 'claude-statusline" 2>/dev/null'
 
 finish
