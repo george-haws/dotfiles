@@ -1,0 +1,182 @@
+#!/bin/sh
+# Keeps settings that Claude Code or Zed changed in place. Each file is
+# rendered from a shared file in the repo plus a local file in
+# ~/.config/chezmoi that is never committed.
+#
+#   dotfiles-capture [--check] [--shared] [--from FILE] claude|zed [KEY...]
+#
+# For each top-level key that differs from what chezmoi would write, or each
+# named KEY, writes the part that differs from the shared file into the local
+# file, so nothing reaches the repo. A map keeps only its differing entries
+# and a Claude Code permission list only the rules the shared file lacks, so
+# the shared file's other values, and a permission it later drops, still reach
+# this machine.
+#   --shared  move the keys into the shared file instead. Refused on a work
+#             machine, because the repo is public.
+#   --from    read values from FILE instead of the live file, to seed the local
+#             file from the .pre-chezmoi backup taken on the first apply.
+#   --check   change nothing; list differing keys and exit 1 if there are any.
+#
+# chezmoi records a hash of what it last wrote. When the repo side has changed
+# since then too, a difference could be either side's, so without KEYs the
+# capture is refused rather than guessing.
+set -eu
+
+usage() { echo "usage: dotfiles-capture [--check] [--shared] [--from FILE] claude|zed [KEY...]" >&2; exit 2; }
+check=false shared=false from=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --check) check=true ;;
+    --shared) shared=true ;;
+    --from) [ $# -ge 2 ] || usage; from=$2; shift ;;
+    -*) usage ;;
+    *) break ;;
+  esac
+  shift
+done
+[ $# -ge 1 ] || usage
+case "$1" in
+  claude) target="$HOME/.claude/settings.json" ;;
+  zed) target="$HOME/.config/zed/settings.json" ;;
+  *) usage ;;
+esac
+name=$1; shift
+local_file="$HOME/.config/chezmoi/$name-settings.local.json"
+shared_file="$(chezmoi source-path)/.shared/$name-settings.json"
+src=${from:-$target}
+# chezmoi's include reads a relative path from the source directory, not from here.
+case $src in /*) ;; *) src="$PWD/$src" ;; esac
+[ -f "$src" ] || { echo "dotfiles-capture: $src does not exist" >&2; exit 1; }
+tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+
+# Zed allows comments and trailing commas. chezmoi parses those; jq does not.
+# No pipe, so a file chezmoi cannot parse stops the script with chezmoi's error.
+parse() {
+  F="$1" chezmoi execute-template '{{ include (env "F") | fromJsonc | toJson }}' > "$tmp/parsed"
+  jq -S . "$tmp/parsed"
+}
+render() { chezmoi cat "$target" > "$tmp/rendered.raw"; jq -S . "$tmp/rendered.raw" > "$tmp/rendered.json"; }
+differing() { # top-level keys present in the source whose value differs from rendered
+  jq -r -n --slurpfile l "$tmp/live.json" --slurpfile r "$tmp/rendered.json" \
+    '$l[0] as $l | $r[0] as $r | $l | keys[] | select($l[.] != $r[.])'
+}
+removed() { # top-level keys rendered but absent from the source
+  jq -r -n --slurpfile l "$tmp/live.json" --slurpfile r "$tmp/rendered.json" \
+    '$l[0] as $l | $r[0] as $r | $r | keys[] | select(. as $k | $l | has($k) | not)'
+}
+words() { tr '\n' ' ' | sed 's/ $//'; }
+sha() { shasum -a 256 "$1" | cut -c1-64; }
+# Keys rendered but missing from the live file. Once the repo has changed as
+# well, a missing key may be one the repo added, so say both.
+report_gone() {
+  [ -n "$gone" ] || return 0
+  if $repo_moved; then
+    echo "$name: missing from the live file, added in the repo or deleted in place: $(echo "$gone" | words). For the repo's, chezmoi apply $target; for deleted ones, delete them by hand from $shared_file or $local_file."
+  else
+    echo "$name: removed in place, delete by hand from $shared_file or $local_file: $(echo "$gone" | words)"
+  fi
+}
+
+parse "$src" > "$tmp/live.json"
+render
+changed=$(differing)
+gone=$(removed)
+last=$(chezmoi state get --bucket=entryState --key="$target" | jq -r '.contentsSHA256 // empty')
+live_moved=true repo_moved=true
+if [ -n "$last" ]; then
+  [ -f "$target" ] && [ "$(sha "$target")" = "$last" ] && live_moved=false
+  [ "$(sha "$tmp/rendered.raw")" = "$last" ] && repo_moved=false
+fi
+
+if $check; then
+  [ -z "$changed$gone" ] && exit 0
+  if ! $live_moved; then hint="the repo changed: chezmoi apply $target"
+  elif ! $repo_moved; then hint="changed in place: dotfiles-capture $name"
+  else hint="both changed: dotfiles-capture $name KEY... for the keys changed in place"; fi
+  echo "$name settings differ from the repo ($hint): $(printf '%s\n' "$changed" "$gone" | sed '/^$/d' | words)"
+  exit 1
+fi
+
+if [ $# -gt 0 ]; then
+  keys=$(printf '%s\n' "$@")
+elif [ -n "$from" ]; then
+  keys=$changed
+elif [ -z "$last" ]; then
+  echo "dotfiles-capture: chezmoi has not written $target yet. Keep its values with dotfiles-capture --from $target $name, or run chezmoi apply, which backs it up to $target.pre-chezmoi first." >&2
+  exit 1
+elif ! $live_moved; then
+  echo "$name: nothing changed in place. Any difference comes from the repo: chezmoi apply $target"
+  exit 0
+elif $repo_moved && [ -n "$changed" ]; then
+  echo "dotfiles-capture: both the live file and the repo changed since the last apply, so these could be either: $(echo "$changed" | words). Name the keys you changed in place: dotfiles-capture $name KEY..." >&2
+  exit 1
+else
+  keys=$changed
+fi
+if [ -z "$keys" ]; then
+  [ -n "$from" ] || report_gone
+  echo "$name: nothing to capture"
+  # The live file holds the repo's values in another layout, as when an app
+  # rewrites it unchanged. Put chezmoi's layout back so chezmoi apply stops
+  # asking about it.
+  [ -z "$from$gone" ] && chezmoi apply --force "$target"
+  exit 0
+fi
+
+printf '%s\n' "$keys" | jq -R . | jq -s . > "$tmp/keys.json"
+if [ -f "$local_file" ]; then parse "$local_file" > "$tmp/local.json"; else echo '{}' > "$tmp/local.json"; fi
+
+if $shared; then
+  if [ "$(chezmoi execute-template '{{ .work }}')" = true ]; then
+    echo "dotfiles-capture: --shared is refused on a work machine; the repo is public. Nothing captured." >&2
+    exit 1
+  fi
+  jq --slurpfile k "$tmp/keys.json" 'with_entries(select(.key | IN($k[0][])))' "$tmp/live.json" > "$tmp/delta.json"
+  jq -s '.[0] + .[1]' "$shared_file" "$tmp/delta.json" > "$tmp/shared.new"
+  cat "$tmp/shared.new" > "$shared_file"
+  # The shared file owns these keys now; a local copy would shadow them.
+  if [ -f "$local_file" ]; then
+    jq --slurpfile k "$tmp/keys.json" 'with_entries(select(.key | IN($k[0][]) | not))' "$tmp/local.json" > "$tmp/local.new"
+    cat "$tmp/local.new" > "$local_file"
+  fi
+  dest="$shared_file (commit it in the repo)"
+else
+  # Keep only what differs from the shared file. Copying a whole value would
+  # shadow the shared file's later changes to it; for the permission lists,
+  # which the template unions, it would keep granting a rule the shared file
+  # drops. A key whose live value equals the shared one leaves the local file.
+  jq -S . "$shared_file" > "$tmp/shared.json"
+  jq -S --arg app "$name" --slurpfile k "$tmp/keys.json" \
+     --slurpfile v "$tmp/live.json" --slurpfile s "$tmp/shared.json" '
+    def overlay($live; $base; $path):
+      if ($live | type) == "object" and ($base | type) == "object" then
+        reduce ($live | keys[]) as $x ({};
+          if $live[$x] == $base[$x] then . else .[$x] = overlay($live[$x]; $base[$x]; $path + [$x]) end)
+      elif $app == "claude" and $path[0] == "permissions" and ($path | length) == 2
+           and ($path[1] | IN("allow", "ask", "deny", "additionalDirectories")) then
+        $live - ($base // [])
+      else $live end;
+    reduce ($k[0][] | select(. as $x | $v[0] | has($x))) as $key (.;
+      if $v[0][$key] == $s[0][$key] then del(.[$key])
+      else .[$key] = overlay($v[0][$key]; $s[0][$key]; [$key]) end)' \
+    "$tmp/local.json" > "$tmp/local.new"
+  mkdir -p "$(dirname "$local_file")"
+  (umask 077 && cat "$tmp/local.new" > "$local_file")
+  dest=$local_file
+fi
+echo "$name: captured $(echo "$keys" | words) into $dest"
+
+render
+if [ -n "$from" ]; then
+  chezmoi apply "$target"
+  exit 0
+fi
+still=$(differing)
+report_gone
+if [ -z "$still$gone" ]; then
+  # Same content as the live file, in chezmoi's layout, so chezmoi apply stops asking about it.
+  chezmoi apply --force "$target"
+else
+  [ -n "$still" ] && echo "$name: still differs from the repo: $(echo "$still" | words). Review with chezmoi diff $target." >&2
+  exit 1
+fi

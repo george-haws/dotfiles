@@ -359,6 +359,114 @@ check_nofile "$bh/.config/zed/settings.json.pre-chezmoi"
 echo '{"a":2}' > "$bh/.claude/settings.json"; HOME="$bh" sh "$bk" >/dev/null
 check_eq "backup: an earlier backup is never overwritten" "$(cat "$bh/.claude/settings.json.pre-chezmoi")" '{"a":1}'
 
+# Task 6 (2026-10-04): dotfiles-capture
+cap="$P/.local/bin/dotfiles-capture"
+check_file "$cap"
+[ -x "$cap" ] && pass "capture: executable" || fail "capture: not executable"
+sh -n "$cap" && pass "capture: sh -n" || fail "capture: syntax"
+# A scratch copy of the source, because --shared writes to it. Its shared files
+# belong to these tests, so editing the real ones never breaks them. A chezmoi
+# wrapper points every call the script makes at that copy and at a fake home.
+cs="$tmp/capture-src"; mkdir -p "$cs"; (cd "$SRC" && tar --exclude .git -cf - .) | (cd "$cs" && tar -xf -)
+csh="$cs/.shared/claude-settings.json"
+echo '{"enabledPlugins":{"a@m":true,"b@m":true},"model":"shared-model","permissions":{"allow":["Bash(ls:*)","Bash(rm:*)"]},"theme":"dark"}' > "$csh"
+echo '{"base_keymap":"VSCode","ui_font_size":16}' > "$cs/.shared/zed-settings.json"
+cb="$tmp/capture-bin"; mkdir -p "$cb"
+use_machine() { # fixture-name; sets $ch, the fake home
+  ch="$tmp/capture-$1"; mkdir -p "$ch"
+  printf '#!/bin/sh\nexec "%s" --config "%s" --source "%s" --destination "%s" --persistent-state "%s" "$@"\n' \
+    "$(command -v chezmoi)" "$SRC/test/fixtures/$1.toml" "$cs" "$ch" "$tmp/capture-$1.boltdb" > "$cb/chezmoi"
+  chmod +x "$cb/chezmoi"
+}
+capture() { HOME="$ch" PATH="$cb:$PATH" "$cap" "$@" 2>&1; }
+cz() { HOME="$ch" PATH="$cb:$PATH" chezmoi "$@"; }
+setjson() { jq "$2" "$1" > "$tmp/setjson" && cat "$tmp/setjson" > "$1"; }
+cl() { jq -c -r "$1" "$ch/.config/chezmoi/claude-settings.local.json" 2>&1; }
+zl() { jq -c -r "$1" "$ch/.config/chezmoi/zed-settings.local.json" 2>&1; }
+
+use_machine work
+mkdir -p "$ch/.claude"
+printf '{"model":"work-model","autoMode":{"environment":"WORK"},"permissions":{"allow":["Bash(worktool:*)"]}}\n' > "$ch/.claude/settings.json"
+capture claude >/dev/null; rc=$?
+check_eq "capture: refused before chezmoi has written the file" "$rc" "1"
+HOME="$ch" sh "$SRC/run_once_before_20-settings-backup.sh" >/dev/null
+cz apply --force "$ch/.claude/settings.json"
+(cd "$ch/.claude" && capture --from settings.json.pre-chezmoi claude) >/dev/null; rc=$?
+check_eq "capture --from a relative backup path: exit 0" "$rc" "0"
+check_eq "capture --from backup: work values seeded into the local file" "$(cl '.model + " " + .autoMode.environment')" "work-model WORK"
+check_eq "capture --from backup: only the permissions the shared file lacks" "$(cl .permissions.allow)" '["Bash(worktool:*)"]'
+check_mode "capture: local file is 0600" "$ch/.config/chezmoi/claude-settings.local.json" "600"
+capture --check claude >/dev/null; rc=$?
+check_eq "capture --from backup: live file matches the repo afterwards" "$rc" "0"
+
+setjson "$ch/.claude/settings.json" '.testFlag = false'
+out=$(capture --check claude); rc=$?
+check_eq "capture --check: in-place change exits 1" "$rc" "1"
+case "$out" in *"changed in place"*testFlag*) pass "capture --check: names the side and the key";; *) fail "capture --check: got '$out'";; esac
+before=$(cat "$csh")
+capture --shared claude >/dev/null; rc=$?
+check_eq "capture --shared: refused on a work machine" "$rc" "1"
+check_eq "capture --shared: shared file untouched on a work machine" "$(cat "$csh")" "$before"
+capture claude >/dev/null; rc=$?
+check_eq "capture: exit 0" "$rc" "0"
+check_eq "capture: in-place key lands in the local file" "$(cl .testFlag)" "false"
+capture --check claude >/dev/null; rc=$?
+check_eq "capture: live file matches the repo afterwards" "$rc" "0"
+
+# Only what differs from the shared file goes into the local file, so the
+# shared file's later changes still arrive, including a permission it drops.
+setjson "$ch/.claude/settings.json" '.permissions.allow += ["Bash(git:*)"] | .enabledPlugins["b@m"] = false'
+capture claude >/dev/null
+check_eq "capture: a permission list keeps only the rules the shared file lacks" "$(cl .permissions.allow)" '["Bash(worktool:*)","Bash(git:*)"]'
+check_eq "capture: a map keeps only its differing entries" "$(cl .enabledPlugins)" '{"b@m":false}'
+setjson "$csh" '.permissions.allow -= ["Bash(rm:*)"]'
+check_eq "capture: a permission the shared file drops is no longer granted" "$(cz cat "$ch/.claude/settings.json" | jq -c .permissions.allow)" '["Bash(ls:*)","Bash(worktool:*)","Bash(git:*)"]'
+cz apply --force "$ch/.claude/settings.json"
+
+# An app rewrites the file with the same values in another layout.
+jq -c . "$ch/.claude/settings.json" > "$tmp/compact" && cat "$tmp/compact" > "$ch/.claude/settings.json"
+capture claude >/dev/null; rc=$?
+check_eq "capture: a layout-only rewrite exits 0" "$rc" "0"
+cz verify "$ch/.claude/settings.json" >/dev/null 2>&1; rc=$?
+check_eq "capture: a layout-only rewrite gets chezmoi's layout back" "$rc" "0"
+
+setjson "$csh" '.repoKey = "repo"'
+out=$(capture claude)
+case "$out" in *"nothing changed in place"*) pass "capture: a repo-side change is not captured";; *) fail "capture: repo-side change: got '$out'";; esac
+setjson "$ch/.claude/settings.json" '.theme = "in-place"'
+capture claude >/dev/null; rc=$?
+check_eq "capture: both sides changed and no KEY -> refused" "$rc" "1"
+out=$(capture claude theme)
+check_eq "capture KEY: the named key is captured" "$(cl .theme)" "in-place"
+check_eq "capture KEY: the repo-side key is not" "$(cl 'has("repoKey")')" "false"
+case "$out" in
+  *"removed in place"*) fail "capture KEY: a key the repo added is called removed in place";;
+  *"added in the repo or deleted in place"*repoKey*) pass "capture KEY: a key the repo added may be the repo's";;
+  *) fail "capture KEY: got '$out'";;
+esac
+cz apply --force "$ch/.claude/settings.json"
+setjson "$ch/.claude/settings.json" 'del(.theme)'
+out=$(capture claude)
+case "$out" in *"removed in place"*theme*) pass "capture: a key removed in place is reported";; *) fail "capture: removed key: got '$out'";; esac
+
+use_machine personal
+mkdir -p "$ch/.config/zed"
+printf '// Zed settings\n{\n  "vim_mode": true, // trailing comma next\n}\n' > "$ch/.config/zed/settings.json"
+capture --from "$ch/.config/zed/settings.json" zed >/dev/null; rc=$?
+check_eq "capture zed --from the live file before the first apply: exit 0" "$rc" "0"
+check_eq "capture zed: JSONC value seeded" "$(zl .vim_mode)" "true"
+check_mode "capture zed: live file written 0600" "$ch/.config/zed/settings.json" "600"
+setjson "$ch/.config/zed/settings.json" '.ui_font_size = 21'
+capture zed >/dev/null
+check_eq "capture zed: in-place key into the local file" "$(zl .ui_font_size)" "21"
+setjson "$ch/.config/zed/settings.json" '.ui_font_size = 22'
+capture --shared zed >/dev/null; rc=$?
+check_eq "capture --shared on personal: exit 0" "$rc" "0"
+check_eq "capture --shared: the key moves to the shared file" "$(jq -r .ui_font_size "$cs/.shared/zed-settings.json")" "22"
+check_eq "capture --shared: and out of the local file" "$(zl 'has("ui_font_size")')" "false"
+capture --check zed >/dev/null; rc=$?
+check_eq "capture --shared: live file matches the repo afterwards" "$rc" "0"
+
 # Task 9: doctor
 for t in personal work; do
   d="$tmp/$t/.local/bin/dotfiles-doctor"
