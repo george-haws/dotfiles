@@ -168,7 +168,7 @@ check_file "$P/.vimrc"
 
 # Task 7: Brewfile and scripts
 check_file "$P/Brewfile"
-for pkg in coreutils gh git git-lfs go grc nvm vim; do check_grep "Brewfile: $pkg" "$P/Brewfile" "brew \"$pkg\""; done
+for pkg in coreutils gh git git-lfs go grc nvm uv vim; do check_grep "Brewfile: $pkg" "$P/Brewfile" "brew \"$pkg\""; done
 check_nogrep "Brewfile: no chezmoi" "$P/Brewfile" 'chezmoi'
 brew_sh=$(render_tmpl work run_onchange_before_00-homebrew.sh.tmpl)
 check_eq "homebrew script: hash comment" "$(printf '%s\n' "$brew_sh" | grep -c '^# Brewfile hash: [0-9a-f]\{64\}$')" "1"
@@ -176,6 +176,8 @@ check_eq "homebrew script: bundles from sourceDir" "$(printf '%s\n' "$brew_sh" |
 check_eq "homebrew script: no lfs install" "$(printf '%s\n' "$brew_sh" | grep -c 'git lfs install')" "0"
 printf '%s\n' "$brew_sh" > "$tmp/brew.sh"; if sh -n "$tmp/brew.sh"; then pass "homebrew script: sh -n"; else fail "homebrew script: syntax"; fi
 if sh -n "$SRC/run_onchange_after_20-uv-tools.sh"; then pass "uv tools script: sh -n"; else fail "uv tools script: syntax"; fi
+check_grep "uv tools script: Homebrew uv" "$SRC/run_onchange_after_20-uv-tools.sh" '^uv=/opt/homebrew/bin/uv$'
+check_nogrep "uv tools script: no standalone installer" "$SRC/run_onchange_after_20-uv-tools.sh" 'astral.sh'
 check_grep "uv tools script: graphifyy" "$SRC/run_onchange_after_20-uv-tools.sh" '^for tool in .*graphifyy'
 check_grep "uv tools script: graphify claude skill" "$SRC/run_onchange_after_20-uv-tools.sh" 'graphify" install --platform claude'
 keys_w=$(render_tmpl work run_once_before_10-ssh-keys.sh.tmpl)

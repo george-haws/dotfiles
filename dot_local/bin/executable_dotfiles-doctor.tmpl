@@ -67,6 +67,7 @@ fi
 
 echo "path"
 check "git resolves to Homebrew" "$(command -v git)" "/opt/homebrew/bin/git"
+check "uv resolves to Homebrew" "$(command -v uv)" "/opt/homebrew/bin/uv"
 case ":$PATH:" in *:./bin:*) fail "PATH contains ./bin" ;; *) pass "no ./bin in PATH" ;; esac
 dups=$(printf '%s\n' "$PATH" | tr ':' '\n' | sort | uniq -d | tr '\n' ' ')
 if [ -z "$dups" ]; then pass "no duplicate PATH entries"; else fail "duplicate PATH entries: $dups"; fi

@@ -3,11 +3,8 @@
 # so add a tool by adding it to the list below. Both installs are idempotent.
 set -eu
 
-uv="$HOME/.local/bin/uv"
-if [ ! -x "$uv" ]; then
-  curl -LsSf https://astral.sh/uv/install.sh \
-    | env UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 sh
-fi
+# uv comes from the Brewfile, which the homebrew script installs first.
+uv=/opt/homebrew/bin/uv
 
 for tool in graphifyy; do
   "$uv" tool install "$tool"
