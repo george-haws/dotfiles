@@ -517,6 +517,7 @@ check_grep "doctor: version check is a warning" "$W/.local/bin/dotfiles-doctor" 
 # Task 8 (2026-10-04): new doctor checks
 d="$P/.local/bin/dotfiles-doctor"
 check_fgrep "doctor: brew bundle check lists what is missing" "$d" "brew bundle check --file \"$SRC/Brewfile\" --no-upgrade --verbose"
+check_fgrep "doctor: brew bundle check never auto-updates Homebrew" "$d" 'HOMEBREW_NO_AUTO_UPDATE=1 brew bundle check'
 check_grep "doctor: new tools on PATH" "$d" 'for t in rg fd fzf bat eza zoxide atuin starship xh delta difft lazygit git-absorb'
 check_grep "doctor: chezmoi verify on starship and atuin" "$d" 'chezmoi verify ~/.config/starship.toml ~/.config/atuin/config.toml'
 check_grep "doctor: settings drift through dotfiles-capture" "$d" 'dotfiles-capture" --check "\$app"'

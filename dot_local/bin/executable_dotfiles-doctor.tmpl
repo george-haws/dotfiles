@@ -74,7 +74,7 @@ dups=$(printf '%s\n' "$PATH" | tr ':' '\n' | sort | uniq -d | tr '\n' ' ')
 if [ -z "$dups" ]; then pass "no duplicate PATH entries"; else fail "duplicate PATH entries: $dups"; fi
 
 echo "brew"
-if brew bundle check --file "{{ .chezmoi.sourceDir }}/Brewfile" --no-upgrade --verbose >"$tmp/bundle.out" 2>&1; then
+if HOMEBREW_NO_AUTO_UPDATE=1 brew bundle check --file "{{ .chezmoi.sourceDir }}/Brewfile" --no-upgrade --verbose >"$tmp/bundle.out" 2>&1; then
   pass "Brewfile satisfied"
 else
   fail "Brewfile not satisfied: $(sed -n 's/^→ //p' "$tmp/bundle.out" | tr '\n' ' ')"
