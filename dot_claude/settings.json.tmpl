@@ -1,11 +1,11 @@
 {{- /*
-  Shared settings from .chezmoitemplates/claude-settings.json, overlaid with
+  Shared settings from .shared/claude-settings.json, overlaid with
   this machine's ~/.config/chezmoi/claude-settings.local.json, which is never
   committed. Permission lists are unioned, the way Claude Code merges lists
   across settings files; every other key in the local file wins outright.
   dotfiles-capture writes the local file; see its header.
 */ -}}
-{{- $s := include ".chezmoitemplates/claude-settings.json" | fromJsonc -}}
+{{- $s := include ".shared/claude-settings.json" | fromJsonc -}}
 {{- $localPath := joinPath .chezmoi.homeDir ".config/chezmoi/claude-settings.local.json" -}}
 {{- if stat $localPath -}}
 {{-   $l := include $localPath | fromJsonc -}}

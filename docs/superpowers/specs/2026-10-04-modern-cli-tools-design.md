@@ -153,8 +153,8 @@ git-absorb needs no config. `git absorb --and-rebase` is the normal invocation.
 |---|---|---|
 | `~/.config/starship.toml` | `dot_config/starship.toml` | Reproduces the current prompt: blank line, `in <cyan dir> on <branch> with unpushed`, newline, `› `. Branch is bold green when clean, bold red when dirty. ` with unpushed` appears in bold magenta when ahead of upstream. Everything else off except `nodejs`, `golang`, and `status` for non-zero exits. |
 | `~/.config/atuin/config.toml` | `dot_config/atuin/config.toml` | `auto_sync = false`, `update_check = false`, `search_mode = "fuzzy"`, `filter_mode = "global"`, `filter_mode_shell_up_key_binding = "directory"`, `style = "compact"`, `inline_height = 20`, `enter_accept = false`. |
-| `~/.claude/settings.json` | `dot_claude/settings.json.tmpl` | Renders `.chezmoitemplates/claude-settings.json` with the machine's local file merged over it. See "Settings the apps rewrite". |
-| `~/.config/zed/settings.json` | `dot_config/zed/private_settings.json.tmpl` | The same, from `.chezmoitemplates/zed-settings.json`. Mode 0600, as Zed created it. |
+| `~/.claude/settings.json` | `dot_claude/settings.json.tmpl` | Renders `.shared/claude-settings.json` with the machine's local file merged over it. See "Settings the apps rewrite". |
+| `~/.config/zed/settings.json` | `dot_config/zed/private_settings.json.tmpl` | The same, from `.shared/zed-settings.json`. Mode 0600, as Zed created it. |
 | `~/.local/bin/dotfiles-capture` | `dot_local/bin/executable_dotfiles-capture` | See "Settings the apps rewrite". |
 | `~/.local/bin/claude-statusline` | `dot_local/bin/executable_claude-statusline` | See "Claude Code status line". |
 
@@ -168,7 +168,7 @@ The `headers` script is deleted from `dot_local/bin/` and listed in `.chezmoirem
 
 Claude Code rewrites `~/.claude/settings.json` on `/model`, `/config`, and plugin installs, and Zed rewrites its settings file from its UI. Both machines use these files, and they need different values. Claude Code's `autoMode.environment` is free text describing the machine, and the work machine may carry work-only permissions, environment variables, or plugin marketplaces. This repo is public. So neither file is a plain managed file.
 
-- **Shared values** live in `.chezmoitemplates/claude-settings.json` and `.chezmoitemplates/zed-settings.json`, plain committed JSON. `autoMode` is never in the shared Claude Code file.
+- **Shared values** live in `.shared/claude-settings.json` and `.shared/zed-settings.json`, plain committed JSON. They stay out of `.chezmoitemplates` because chezmoi parses every file there as a template, and a value containing `{{` would break every apply. `autoMode` is never in the shared Claude Code file.
 - **Local values** live in `~/.config/chezmoi/claude-settings.local.json` and `~/.config/chezmoi/zed-settings.local.json`. They sit next to `chezmoi.toml`, outside the source tree, mode 0600, and are never committed.
 - **The templates** render the shared file with the local file merged over it. Maps merge key by key and the local file wins. Claude Code's `permissions.allow`, `ask`, `deny`, and `additionalDirectories` are unioned instead, matching how Claude Code merges lists across its own settings files. The output is sorted two-space JSON. Zed's comments are dropped once, when its shared file is made.
 - **`chezmoi re-add` skips templates**, so it cannot carry work values into the repo.

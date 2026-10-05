@@ -310,9 +310,18 @@ check_nofile "$P/install.sh"
 check_nofile "$P/README.md"
 
 # Task 5 (2026-10-04): Claude Code and Zed settings
-check_nofile "$P/.chezmoitemplates"
-cshared="$SRC/.chezmoitemplates/claude-settings.json"
-zshared="$SRC/.chezmoitemplates/zed-settings.json"
+check_nofile "$P/.shared"
+# chezmoi parses every file in .chezmoitemplates as a template, so a shared
+# value holding {{ would break every apply. .shared is read raw.
+rs="$tmp/regress-src"; mkdir -p "$rs" "$tmp/regress" "$tmp/regress-home"
+cp -R "$SRC"/* "$SRC"/.chezmoi* "$SRC/.shared" "$rs/"
+rule="Bash(docker inspect --format '{{json .Config}}':*)"
+jq --arg r "$rule" '.permissions.allow = [$r]' "$SRC/.shared/claude-settings.json" > "$rs/.shared/claude-settings.json"
+regress() { HOME="$tmp/regress-home" chezmoi --config "$SRC/test/fixtures/work.toml" --source "$rs" --destination "$tmp/regress" --persistent-state "$tmp/regress.boltdb" "$@"; }
+if regress managed >/dev/null; then pass "shared: a value holding {{ does not break chezmoi"; else fail "shared: chezmoi managed fails on a value holding {{"; fi
+check_eq "shared: a value holding {{ renders intact" "$(regress cat "$tmp/regress/.claude/settings.json" | jq -r '.permissions.allow[0]')" "$rule"
+cshared="$SRC/.shared/claude-settings.json"
+zshared="$SRC/.shared/zed-settings.json"
 for t in personal work; do
   c="$tmp/$t/.claude/settings.json"; z="$tmp/$t/.config/zed/settings.json"
   check_file "$c"
