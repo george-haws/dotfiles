@@ -460,10 +460,16 @@ case "$out" in *"removed in place"*theme*) pass "capture: a key removed in place
 use_machine personal
 mkdir -p "$ch/.config/zed"
 printf '// Zed settings\n{\n  "vim_mode": true, // trailing comma next\n}\n' > "$ch/.config/zed/settings.json"
+zorig=$(cat "$ch/.config/zed/settings.json")
 capture --from "$ch/.config/zed/settings.json" zed >/dev/null; rc=$?
 check_eq "capture zed --from the live file before the first apply: exit 0" "$rc" "0"
+# Its targeted apply skips the backup script, so --from keeps the original itself.
+check_eq "capture zed --from before the first apply: the original is backed up" "$(cat "$ch/.config/zed/settings.json.pre-chezmoi" 2>&1)" "$zorig"
 check_eq "capture zed: JSONC value seeded" "$(zl .vim_mode)" "true"
 check_mode "capture zed: live file written 0600" "$ch/.config/zed/settings.json" "600"
+capture --from "$ch/.config/zed/settings.json.pre-chezmoi" zed vim_mode >/dev/null; rc=$?
+check_eq "capture zed --from a second time: exit 0" "$rc" "0"
+check_eq "capture zed --from a second time: the backup is never overwritten" "$(cat "$ch/.config/zed/settings.json.pre-chezmoi" 2>&1)" "$zorig"
 setjson "$ch/.config/zed/settings.json" '.ui_font_size = 21'
 capture zed >/dev/null
 check_eq "capture zed: in-place key into the local file" "$(zl .ui_font_size)" "21"

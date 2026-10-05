@@ -168,6 +168,12 @@ echo "$name: captured $(echo "$keys" | words) into $dest"
 
 render
 if [ -n "$from" ]; then
+  # A targeted apply skips the backup script, so keep the original here the
+  # way it would, the first time chezmoi writes the file.
+  if [ -z "$last" ] && [ -f "$target" ] && [ ! -e "$target.pre-chezmoi" ]; then
+    cp -p "$target" "$target.pre-chezmoi"
+    echo "Backed up $target to $target.pre-chezmoi"
+  fi
   chezmoi apply "$target"
   exit 0
 fi
