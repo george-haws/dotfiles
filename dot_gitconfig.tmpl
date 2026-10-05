@@ -6,6 +6,7 @@
     sshCommand = ssh -i ~/.ssh/id_ed25519 -o IdentitiesOnly=yes -o AddKeysToAgent=yes -o IgnoreUnknown=UseKeychain -o UseKeychain=yes
     excludesfile = ~/.config/git/ignore
     editor = vim
+    pager = delta
 [gpg]
     format = ssh
 [gpg "ssh"]
@@ -25,6 +26,18 @@
     prune = true
 [rerere]
     enabled = true
+[interactive]
+    diffFilter = delta --color-only
+[delta]
+    navigate = true
+    line-numbers = true
+    side-by-side = false
+[merge]
+    conflictStyle = zdiff3
+[diff]
+    colorMoved = default
+[difftool "difftastic"]
+    cmd = difft "$LOCAL" "$REMOTE"
 [init]
     defaultBranch = main
 [push]
@@ -35,6 +48,7 @@
     wtf = !git-wtf
     rank-contributors = !git-rank-contributors
     count = !git shortlog -sn
+    dft = difftool --tool=difftastic
 [color]
     diff = auto
     status = auto

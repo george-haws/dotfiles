@@ -110,6 +110,17 @@ check_eq "git(work): uppercase owner is NOT matched (documented limit)" "$(gitw 
 gitp() { HOME="$P" GIT_CONFIG_NOSYSTEM=1 git "$@"; }
 gitp init -q "$r/p"; gitp -C "$r/p" remote add origin https://github.com/example-org/x.git
 check_eq "git(personal): any remote -> personal email" "$(gitp -C "$r/p" config user.email)" "geehaws@gmail.com"
+# Task 4 (2026-10-04): delta and difftastic
+check_grep "gitconfig: delta pager" "$P/.gitconfig" '^[[:space:]]*pager = delta$'
+check_grep "gitconfig: delta interactive filter" "$P/.gitconfig" 'diffFilter = delta --color-only'
+check_grep "gitconfig: delta navigate" "$P/.gitconfig" '^[[:space:]]*navigate = true'
+check_grep "gitconfig: zdiff3 conflicts" "$P/.gitconfig" 'conflictStyle = zdiff3'
+check_grep "gitconfig: difftastic difftool" "$P/.gitconfig" '^\[difftool "difftastic"\]'
+check_grep "gitconfig: difftastic cmd" "$P/.gitconfig" 'cmd = difft "\$LOCAL" "\$REMOTE"'
+check_grep "gitconfig: dft alias" "$P/.gitconfig" 'dft = difftool --tool=difftastic'
+check_eq "gitconfig: difftool prompt set once" "$(grep -c '^[[:space:]]*prompt = false' "$P/.gitconfig")" "1"
+check_eq "git(personal): core.pager resolves" "$(gitp -C "$r/p" config core.pager)" "delta"
+check_eq "git(work): core.pager resolves" "$(gitw -C "$r/work" config core.pager)" "delta"
 
 # Task 4: gh shim
 check_file "$W/.local/bin/gh"
