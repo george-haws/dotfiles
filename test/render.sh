@@ -352,7 +352,7 @@ for t in personal work; do
   check_mode "zed settings($t): 0600" "$z" "600"
   check_mode "claude settings($t): ~/.claude is 0700" "$tmp/$t/.claude" "700"
   check_mode "zed settings($t): ~/.config/zed is 0700" "$tmp/$t/.config/zed" "700"
-  check_eq "claude settings($t): only settings.json under .claude" "$(find "$tmp/$t/.claude" -type f | sed "s|$tmp/$t/.claude/||" | sort | tr '\n' ' ')" "settings.json "
+  check_eq "claude settings($t): settings.json and statusline.sh under .claude" "$(find "$tmp/$t/.claude" -type f | sed "s|$tmp/$t/.claude/||" | sort | tr '\n' ' ')" "settings.json statusline.sh "
 done
 check_eq "claude shared: no machine description" "$(jq 'has("autoMode")' "$cshared")" "false"
 check_eq "claude shared: no credential-like keys" "$(jq -r '[paths(scalars) | map(tostring) | join(".")] | .[]' "$cshared" | grep -c -i -E 'token|credential|apikey|secret|password')" "0"
@@ -511,40 +511,44 @@ check_eq "capture --shared: and out of the local file" "$(zl 'has("ui_font_size"
 capture --check zed >/dev/null; rc=$?
 check_eq "capture --shared: live file matches the repo afterwards" "$rc" "0"
 
-# Task 7 (2026-10-04): Claude Code status line
-sl="$P/.local/bin/claude-statusline"
+# Task 7 (2026-10-04): Claude Code status line, read from the session transcript
+sl="$P/.claude/statusline.sh"
 check_file "$sl"
 [ -x "$sl" ] && pass "statusline: executable" || fail "statusline: not executable"
-sh -n "$sl" && pass "statusline: sh -n" || fail "statusline: syntax"
-check_grep "statusline: never takes git's index lock" "$sl" '^export GIT_OPTIONAL_LOCKS=0$'
-check_eq "claude settings: statusLine command" "$(jq -r '.statusLine.command' "$P/.claude/settings.json")" "~/.local/bin/claude-statusline"
+bash -n "$sl" && pass "statusline: bash -n" || fail "statusline: syntax"
+check_nofile "$P/.local/bin/claude-statusline"
+check_grep ".chezmoiremove: old claude-statusline script" "$SRC/.chezmoiremove" '^\.local/bin/claude-statusline$'
+check_eq "claude settings: statusLine command" "$(jq -r '.statusLine.command' "$P/.claude/settings.json")" "~/.claude/statusline.sh"
 check_eq "claude settings: statusLine type" "$(jq -r '.statusLine.type' "$P/.claude/settings.json")" "command"
+check_eq "claude settings: statusLine refreshInterval" "$(jq -r '.statusLine.refreshInterval' "$P/.claude/settings.json")" "2"
+check_eq "claude settings: statusLine padding" "$(jq -r '.statusLine.padding' "$P/.claude/settings.json")" "0"
 strip_ansi() { sed "s/$(printf '\033')\[[0-9;]*m//g"; }
-statusline() { # dir
-  printf '{"workspace":{"current_dir":"%s","project_dir":"%s"},"cwd":"%s"}' "$1" "$1" "$1" | "$sl" 2>>"$tmp/sl.err" | strip_ansi
+# A transcript with the shapes the script reads: typed prompts (an acknowledgement, a settings
+# command, an injected tag, a skill call), an untyped message, then a turn stopped on a Bash call.
+tr="$tmp/sl-transcript.jsonl"
+ts=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+{
+  printf '{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"fix the failing tests"},"timestamp":"%s"}\n' "$ts"
+  printf '{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"ok, go ahead"},"timestamp":"%s"}\n' "$ts"
+  printf '{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"/model opus"},"timestamp":"%s"}\n' "$ts"
+  printf '{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"<task-notification>done</task-notification>"},"timestamp":"%s"}\n' "$ts"
+  printf '{"type":"user","origin":{"kind":"human"},"message":{"role":"user","content":"<command-name>/commit</command-name><command-args>the fix</command-args>"},"timestamp":"%s"}\n' "$ts"
+  printf '{"type":"user","message":{"role":"user","content":[{"type":"text","text":"a subagent report, not typed"}]},"timestamp":"%s"}\n' "$ts"
+  printf '{"type":"assistant","message":{"role":"assistant","stop_reason":"tool_use","content":[{"type":"tool_use","name":"Bash","input":{"command":"npm test","description":"Run the test suite"}}]},"timestamp":"%s"}\n' "$ts"
+} > "$tr"
+statusline() { # extra-json-fields
+  printf '{"session_id":"t","transcript_path":"%s","model":{"display_name":"M"},"context_window":{"used_percentage":12.5},"cost":{"total_cost_usd":1.5}%s}' "$tr" "$1" | bash "$sl" 2>>"$tmp/sl.err" | strip_ansi
 }
 : > "$tmp/sl.err"
-slr="$tmp/sl"; rm -rf "$slr"; mkdir -p "$slr"
-git init -q --bare -b main "$slr/remote.git"
-git clone -q "$slr/remote.git" "$slr/x" 2>/dev/null
-slgit() { git -C "$slr/x" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
-slgit symbolic-ref HEAD refs/heads/main   # independent of init.defaultBranch on this machine
-slgit commit -q --allow-empty -m first
-check_eq "statusline: no upstream yet -> repo on branch" "$(statusline "$slr/x")" "x on main"
-slgit push -q -u origin main 2>/dev/null
-check_eq "statusline: pushed -> repo on branch" "$(statusline "$slr/x")" "x on main"
-slgit commit -q --allow-empty -m second
-check_eq "statusline: ahead -> with unpushed" "$(statusline "$slr/x")" "x on main with unpushed"
-mkdir -p "$slr/x/sub"
-check_eq "statusline: subdirectory names the repo, not the dir" "$(statusline "$slr/x/sub")" "x on main with unpushed"
-slgit checkout -q --detach
-check_eq "statusline: detached -> short hash" "$(statusline "$slr/x")" "x on $(slgit rev-parse --short HEAD)"
-mkdir -p "$slr/plain"
-check_eq "statusline: outside a repo -> directory name" "$(statusline "$slr/plain")" "plain"
+out=$(statusline "")
+check_eq "statusline: header row" "$(printf '%s\n' "$out" | sed -n 1p)" "M · 12% ctx · \$1.50"
+check_eq "statusline: Started is the first typed prompt" "$(printf '%s\n' "$out" | sed -n 2p)" "Started: fix the failing tests"
+check_eq "statusline: Now skips acks, settings commands, injected and untyped messages; unwraps skill calls" "$(printf '%s\n' "$out" | sed -n 3p)" "Now:     /commit the fix"
+case "$(printf '%s\n' "$out" | sed -n 4p)" in "Doing:   Run the test suite ("*) pass "statusline: Doing is the Bash description with elapsed time";; *) fail "statusline: Doing row: '$(printf '%s\n' "$out" | sed -n 4p)'";; esac
+check_eq "statusline: four rows" "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" "4"
+check_eq "statusline: session name leads the header" "$(statusline ',"session_name":"demo"' | sed -n 1p)" "[demo] · M · 12% ctx · \$1.50"
+check_eq "statusline: no transcript -> header only" "$(printf '{"model":{"display_name":"M"}}' | bash "$sl" 2>>"$tmp/sl.err" | strip_ansi)" "M · 0% ctx · \$0.00"
 check_eq "statusline: no stderr noise across all calls" "$(wc -c < "$tmp/sl.err" | tr -d ' ')" "0"
-check_eq "statusline: empty stdin -> cwd" "$(cd "$slr/plain" && printf '' | "$sl" 2>/dev/null | strip_ansi)" "plain"
-dirty_out=$(touch "$slr/x/untracked" && printf '{"workspace":{"current_dir":"%s"}}' "$slr/x" | "$sl" 2>/dev/null)
-case "$dirty_out" in *"$(printf '\033[1;31m')"*) pass "statusline: dirty tree colors branch red";; *) fail "statusline: dirty tree should color branch red";; esac
 
 # Task 9: doctor
 for t in personal work; do
@@ -569,6 +573,6 @@ check_grep "doctor: chezmoi verify on starship and atuin" "$d" 'chezmoi verify ~
 check_grep "doctor: settings drift through dotfiles-capture" "$d" 'dotfiles-capture" --check "\$app"'
 check_grep "doctor: settings drift is a warning" "$d" 'warn "\$out"'
 check_grep "doctor: statusLine wired" "$d" "jq -r '.statusLine.command // empty'"
-check_grep "doctor: statusline runs" "$d" 'claude-statusline" 2>/dev/null'
+check_grep "doctor: statusline runs" "$d" 'statusline.sh" 2>/dev/null'
 
 finish

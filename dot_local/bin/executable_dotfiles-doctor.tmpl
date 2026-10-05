@@ -96,10 +96,10 @@ for app in claude zed; do
 done
 
 echo "claude status line"
-check "settings.json statusLine command" "$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)" "~/.local/bin/claude-statusline"
-if [ -x "$HOME/.local/bin/claude-statusline" ]; then pass "claude-statusline executable"; else fail "claude-statusline missing or not executable"; fi
-sl_out=$(printf '{"workspace":{"current_dir":"%s"}}' "$HOME/.dotfiles" | "$HOME/.local/bin/claude-statusline" 2>/dev/null)
-case "$sl_out" in *dotfiles*" on "*) pass "claude-statusline prints repo and branch" ;; *) fail "claude-statusline output: '$sl_out'" ;; esac
+check "settings.json statusLine command" "$(jq -r '.statusLine.command // empty' "$HOME/.claude/settings.json" 2>/dev/null)" "~/.claude/statusline.sh"
+if [ -x "$HOME/.claude/statusline.sh" ]; then pass "statusline.sh executable"; else fail "statusline.sh missing or not executable"; fi
+sl_out=$(printf '{"model":{"display_name":"doctor"}}' | "$HOME/.claude/statusline.sh" 2>/dev/null)
+case "$sl_out" in *doctor*" ctx"*) pass "statusline.sh prints the header row" ;; *) fail "statusline.sh output: '$sl_out'" ;; esac
 
 echo "startup"
 secs=$(zsh -c 'zmodload zsh/datetime; s=$EPOCHREALTIME; for i in 1 2 3 4 5; do zsh -i -c exit; done; printf "%.3f" $(( (EPOCHREALTIME - s) / 5 ))')

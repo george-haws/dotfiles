@@ -71,7 +71,7 @@ dotfiles-capture --from ~/.config/zed/settings.json.pre-chezmoi zed
 
 Then read the local files and delete anything that should come from the shared file instead.
 
-Claude Code's status line is `~/.local/bin/claude-statusline`. It shows the repo, the branch in green or red for clean or dirty, and `with unpushed` when the branch is ahead of upstream. Nothing else under `~/.claude` is managed; skills are an open question, recorded under Future work in `docs/superpowers/specs/2026-10-04-modern-cli-tools-design.md`.
+Claude Code's status line is `~/.claude/statusline.sh`. It shows the session name, model, context used and cost, then `Started` (the first thing you asked), `Now` (the latest) and `Doing` (the current step and how long it has taken), all read from the session transcript. Nothing else under `~/.claude` is managed; skills are an open question, recorded under Future work in `docs/superpowers/specs/2026-10-04-modern-cli-tools-design.md`.
 
 ## Design
 

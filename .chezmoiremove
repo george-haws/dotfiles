@@ -1,2 +1,3 @@
 # chezmoi does not delete files it stops managing; these it removes on apply.
 .local/bin/headers
+.local/bin/claude-statusline

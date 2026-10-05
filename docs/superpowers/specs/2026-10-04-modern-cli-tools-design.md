@@ -163,13 +163,13 @@ git-absorb needs no config. `git absorb --and-rebase` is the normal invocation.
 | `~/.claude/settings.json` | `private_dot_claude/settings.json.tmpl` | Renders `.shared/claude-settings.json` with the machine's local file merged over it. See "Settings the apps rewrite". `~/.claude` is mode 0700, because chezmoi resets a managed directory's mode on every apply and this one holds transcripts. |
 | `~/.config/zed/settings.json` | `dot_config/private_zed/private_settings.json.tmpl` | The same, from `.shared/zed-settings.json`. Mode 0600, as Zed created it, in a 0700 `~/.config/zed`. |
 | `~/.local/bin/dotfiles-capture` | `dot_local/bin/executable_dotfiles-capture` | See "Settings the apps rewrite". |
-| `~/.local/bin/claude-statusline` | `dot_local/bin/executable_claude-statusline` | See "Claude Code status line". |
+| `~/.claude/statusline.sh` | `private_dot_claude/executable_statusline.sh` | See "Claude Code status line". |
 
 Not tracked, on purpose: `~/.claude/CLAUDE.md` and `~/.claude/keybindings.json` do not exist today and are added if they ever do. Nothing under `~/.claude/skills/` is tracked; see Future work. Credentials, projects, sessions, history, shell snapshots, plugin caches, and telemetry under `~/.claude/` are machine-local or secret and never enter the repo.
 
 chezmoi never removes files it does not manage, so adding `private_dot_claude/` to the source tree leaves everything else under `~/.claude/` alone.
 
-The `headers` script is deleted from `dot_local/bin/` and listed in `.chezmoiremove`, because chezmoi does not delete a file it stops managing.
+The `headers` script and the first status line, `claude-statusline`, are deleted from `dot_local/bin/` and listed in `.chezmoiremove`, because chezmoi does not delete a file it stops managing.
 
 ## Settings the apps rewrite
 
@@ -187,26 +187,29 @@ Two limits. A key removed in place is reported, not captured; delete it by hand 
 
 ## Claude Code status line
 
-`~/.local/bin/claude-statusline` is a POSIX sh script. Claude Code runs it with session JSON on stdin and shows its first line of stdout in the status row. The settings entry:
+`~/.claude/statusline.sh` is a bash script, kept next to the settings file that names it. Claude Code runs it with session JSON on stdin, on its own events and every 2 seconds, and shows every line of stdout. The settings entry:
 
 ```json
 "statusLine": {
   "type": "command",
-  "command": "~/.local/bin/claude-statusline"
+  "command": "~/.claude/statusline.sh",
+  "padding": 0,
+  "refreshInterval": 2
 }
 ```
 
-The script reads `.workspace.current_dir` from stdin with `jq`, which macOS ships at `/usr/bin/jq`, then:
+The script answers, for a session you tab back to, what it was asked to do, what you asked most recently, and what it is doing now. Everything comes from the session transcript, whose path Claude Code passes as `.transcript_path`. There is no saved state and no hook, so it also works for sessions resumed from before it existed.
 
-- If the directory is not inside a git work tree, prints the directory's basename.
-- Otherwise prints `<repo> on <branch>` where repo is the basename of `git rev-parse --show-toplevel` and branch is `git symbolic-ref --short HEAD`, or the short commit hash when detached.
-- Appends ` with unpushed` when `git rev-list --count @{upstream}..HEAD` is greater than zero. When no upstream exists, nothing is appended.
+- Row 1: the session name in brackets when one is set, the model (dimmed), the context percentage used, and the cost.
+- `Started:` the first prompt the user typed. Over 110 characters, a one-line Haiku summary is shown in italics instead. The summary is made once per session by `claude -p --model haiku` in the background, with no tools, no MCP servers, no saved session and no settings, and cached in `$TMPDIR/claude-statusline/<session>.summary`. A lock file prevents duplicate calls and allows a retry after five minutes. Until the summary arrives, the cut-off text is shown, with pasted blocks shown as `[pasted text]`.
+- `Now:` the latest prompt the user typed, hidden when it is the same as `Started`.
+- `Doing:` the current step from the transcript tail, with elapsed time: the label of an unfinished tool call (a Bash command's description, the file a Read or Edit touches, `Subagent: …`), `Waiting for you` after `end_turn`, a `turn_duration` entry or an interrupt, and `Thinking` otherwise.
 
-Colors match the shell prompt: cyan repo, green or red branch for clean or dirty, magenta for unpushed. Claude Code debounces status line runs at 300ms and cancels an in-flight run when a new one is due, so the script does no caching. `git status --porcelain` is the only call that can be slow, and it is the same call the shell prompt makes today.
+Prompts are the transcript's `user` entries with `origin.kind == "human"`, prefiltered with perl, which is about ten times faster than macOS grep on a 15 MB transcript. Skill calls, stored as `<command-name>` and `<command-args>` tags, are unwrapped to `/skill args`. Dropped: injected messages that start with `<`, settings commands such as `/model` and `/clear`, and messages made up only of acknowledgement words. Both word lists are constants at the top of the script, `ACK` and `SETTINGS_CMDS`.
 
-The script exports `GIT_OPTIONAL_LOCKS=0`. Claude Code runs it while its own git commands run, and `git status` otherwise refreshes the index under `.git/index.lock`, long enough to make one of those commands fail.
+The transcript format is not documented, so a Claude Code update can break the parsing; the sign is an empty `Started`, `Now` or `Doing` row. A refresh takes about 0.15 s on a 15 MB transcript. The script needs bash, jq, perl and macOS `stat -f`.
 
-No `refreshInterval`: the line updates on Claude Code's own events, and a subagent pushing in the background is rare enough not to warrant a timer.
+The first version of this status line, `~/.local/bin/claude-statusline`, printed `<repo> on <branch> with unpushed`. It is removed: the shell prompt already shows that, and the row is better spent on the session.
 
 ## Verification
 
@@ -217,8 +220,8 @@ New `dotfiles-doctor` checks:
 | Brewfile | `brew bundle check --file ~/.dotfiles/Brewfile --no-upgrade --verbose` exits 0. Fail otherwise, listing what is missing; without `--verbose` the output names nothing. |
 | Config drift | `chezmoi verify ~/.config/starship.toml ~/.config/atuin/config.toml` exits 0. Warn, not fail; the fix is `chezmoi re-add` or `chezmoi apply`. |
 | Settings drift | `dotfiles-capture --check claude` and `dotfiles-capture --check zed` exit 0. Warn, not fail, because the apps change these files on purpose; the warning names the differing keys and the command to run. |
-| Status line wired | `~/.claude/settings.json` has `.statusLine.command` equal to `~/.local/bin/claude-statusline`, and that file is executable. |
-| Status line output | Piping `{"workspace":{"current_dir":"$HOME/.dotfiles"}}` to the script prints a line containing `dotfiles on `. |
+| Status line wired | `~/.claude/settings.json` has `.statusLine.command` equal to `~/.claude/statusline.sh`, and that file is executable. |
+| Status line output | Piping `{"model":{"display_name":"doctor"}}` to the script prints a header row containing `doctor` and ` ctx`. |
 | Tool presence | `command -v` succeeds for every new formula's binary. Fail otherwise. |
 | Startup | Unchanged check, under 0.3 seconds. Now meaningful, since the shell loads eight more things. |
 
@@ -226,14 +229,16 @@ New `dotfiles-doctor` checks:
 
 Additions to `test/render.sh`, for both the personal and work trees unless noted:
 
-- `.config/zsh/tools.zsh`, `.config/zsh/plugins.zsh`, `.config/starship.toml`, `.config/atuin/config.toml`, `.config/zed/settings.json`, `.claude/settings.json`, `.local/bin/claude-statusline`, and `.local/bin/dotfiles-capture` exist. `.config/zed/settings.json` is mode 0600, and `.claude` and `.config/zed` are mode 0700.
-- `.local/bin/claude-statusline` and `.local/bin/dotfiles-capture` are executable.
+- `.config/zsh/tools.zsh`, `.config/zsh/plugins.zsh`, `.config/starship.toml`, `.config/atuin/config.toml`, `.config/zed/settings.json`, `.claude/settings.json`, `.claude/statusline.sh`, and `.local/bin/dotfiles-capture` exist. `.config/zed/settings.json` is mode 0600, and `.claude` and `.config/zed` are mode 0700.
+- `.claude/statusline.sh` and `.local/bin/dotfiles-capture` are executable.
+- `.local/bin/claude-statusline` does not exist, and `.chezmoiremove` lists it.
 - `.local/bin/headers` does not exist, and `.chezmoiremove` lists it.
 - `.config/zsh/.zshrc` sources `tools` after `completion`, and `plugins` last.
 - With stub eza, bat, lazygit, and xh first on PATH, `ls`, `cat`, `lg`, and `headers` are aliases. Without the stubs they are not, except for tools this machine's Homebrew really has.
 - `.gitconfig` contains `pager = delta` and a `[difftool "difftastic"]` section; `.config/zsh/git.zsh` aliases `dft` to `git dft`.
 - `.config/atuin/config.toml` contains `auto_sync = false`.
-- With no local file, the rendered Claude Code and Zed settings equal their shared files. The shared Claude Code file has no `autoMode` and no credential-like keys, and its `.statusLine.command` is `~/.local/bin/claude-statusline`. `settings.json` is the only file rendered under `.claude/`.
+- With no local file, the rendered Claude Code and Zed settings equal their shared files. The shared Claude Code file has no `autoMode` and no credential-like keys, and its `.statusLine.command` is `~/.claude/statusline.sh`. `settings.json` and `statusline.sh` are the only files rendered under `.claude/`.
+- The status line, fed a small transcript, prints the header row, `Started`, `Now` and `Doing`; drops acknowledgements, settings commands, injected tags and untyped messages; unwraps a skill call; and prints only the header row without a transcript, with nothing on stderr.
 - With a local file, local values win, Claude Code permission lists are unioned without duplicates, and a Zed local file may contain comments.
 - The backup script copies an existing settings file once and never overwrites an earlier backup.
 - `dotfiles-capture`, run against a scratch copy of the source and a fake home through a chezmoi wrapper:
@@ -255,7 +260,7 @@ As before, each assertion is written before the file it checks.
 ## Rollout on this machine
 
 1. `brew install --cask --adopt iterm2 zed` once, by hand, because the apps already exist.
-2. Seed the local settings files from the live ones with `dotfiles-capture --from`, run from the source tree because `~/.local/bin` does not have it yet. Each run first keeps a `.pre-chezmoi` copy. The Claude Code run names `autoMode`, so the local file gets the machine description, and the running session never sees it missing, but not the old `~/.claude/statusline.sh` status line, which `claude-statusline` replaces. The Zed run moves this machine's `bypassPermissions` agent mode and `trust_all_worktrees` into the local Zed file.
+2. Seed the local settings files from the live ones with `dotfiles-capture --from`, run from the source tree because `~/.local/bin` does not have it yet. Each run first keeps a `.pre-chezmoi` copy. The Claude Code run names `autoMode`, so the local file gets the machine description, and the running session never sees it missing. The Zed run moves this machine's `bypassPermissions` agent mode and `trust_all_worktrees` into the local Zed file.
 3. `chezmoi diff`, then `chezmoi apply`. The homebrew run script fires because the Brewfile hash changed, and `.chezmoiremove` deletes the old `headers` script.
 4. `atuin import auto` once to load the existing history file.
 5. Open a new shell and set iTerm2's font to JetBrains Mono Nerd Font by hand. iTerm2 preferences are not managed.

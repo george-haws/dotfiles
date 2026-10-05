@@ -18,7 +18,9 @@
     }
   },
   "statusLine": {
-    "command": "~/.local/bin/claude-statusline",
+    "command": "~/.claude/statusline.sh",
+    "padding": 0,
+    "refreshInterval": 2,
     "type": "command"
   },
   "theme": "dark"
