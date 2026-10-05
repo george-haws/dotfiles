@@ -315,6 +315,7 @@ check_grep "README: capture after an app edits its settings" "$SRC/README.md" 'd
 check_fgrep "README: seed the local file from the backup" "$SRC/README.md" 'dotfiles-capture --from ~/.claude/settings.json.pre-chezmoi claude'
 check_grep "README: Nerd Font set by hand" "$SRC/README.md" 'JetBrains Mono Nerd Font'
 check_nogrep "README: re-add is not the route for app settings" "$SRC/README.md" 're-add ~/.claude'
+check_fgrep "README: never chezmoi add the app settings" "$SRC/README.md" 'Never `chezmoi add` them either'
 check_fgrep "README: skills question points at the modern CLI tools spec" "$SRC/README.md" 'Future work in `docs/superpowers/specs/2026-10-04-modern-cli-tools-design.md`'
 
 # Task 5 (2026-10-04): Claude Code and Zed settings

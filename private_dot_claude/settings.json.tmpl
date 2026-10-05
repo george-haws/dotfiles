@@ -4,6 +4,8 @@
   committed. Permission lists are unioned, the way Claude Code merges lists
   across settings files; every other key in the local file wins outright.
   dotfiles-capture writes the local file; see its header.
+  The unioned lists are allow, ask, deny, and additionalDirectories. The
+  overlay in dotfiles-capture names the same four; keep the two lists the same.
 */ -}}
 {{- $s := include ".shared/claude-settings.json" | fromJsonc -}}
 {{- $localPath := joinPath .chezmoi.homeDir ".config/chezmoi/claude-settings.local.json" -}}

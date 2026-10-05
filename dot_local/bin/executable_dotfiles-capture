@@ -153,6 +153,8 @@ else
       if ($live | type) == "object" and ($base | type) == "object" then
         reduce ($live | keys[]) as $x ({};
           if $live[$x] == $base[$x] then . else .[$x] = overlay($live[$x]; $base[$x]; $path + [$x]) end)
+      # The lists the template unions: allow, ask, deny, additionalDirectories.
+      # Keep these the same as the list in private_dot_claude/settings.json.tmpl.
       elif $app == "claude" and $path[0] == "permissions" and ($path | length) == 2
            and ($path[1] | IN("allow", "ask", "deny", "additionalDirectories")) then
         $live - ($base // [])
