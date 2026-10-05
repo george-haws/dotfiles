@@ -457,6 +457,17 @@ setjson "$ch/.claude/settings.json" 'del(.theme)'
 out=$(capture claude)
 case "$out" in *"removed in place"*theme*) pass "capture: a key removed in place is reported";; *) fail "capture: removed key: got '$out'";; esac
 
+# The templates treat any truthy .work as a work machine, so --shared must too.
+use_machine work-yes
+mkdir -p "$ch/.claude"
+printf '{"model":"work-model"}\n' > "$ch/.claude/settings.json"
+cz apply --force "$ch/.claude/settings.json"
+setjson "$ch/.claude/settings.json" '.testFlag = true'
+cp "$csh" "$tmp/csh.before"
+capture --shared claude >/dev/null; rc=$?
+check_eq "capture --shared: refused when work is a truthy non-boolean" "$rc" "1"
+if cmp -s "$csh" "$tmp/csh.before"; then pass "capture --shared: shared file untouched when work is a truthy non-boolean"; else fail "capture --shared: shared file changed when work is a truthy non-boolean"; fi
+
 use_machine personal
 mkdir -p "$ch/.config/zed"
 printf '// Zed settings\n{\n  "vim_mode": true, // trailing comma next\n}\n' > "$ch/.config/zed/settings.json"

@@ -1,0 +1,9 @@
+[data]
+    work = "yes"
+    workEmail = "work@example.com"
+    name = "George Haws"
+    personalEmail = "geehaws@gmail.com"
+    personalOwners = ["george-haws", "george-elliott"]
+
+[warnings]
+    configFileTemplateHasChanged = false

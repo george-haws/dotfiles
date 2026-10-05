@@ -127,10 +127,11 @@ printf '%s\n' "$keys" | jq -R . | jq -s . > "$tmp/keys.json"
 if [ -f "$local_file" ]; then parse "$local_file" > "$tmp/local.json"; else echo '{}' > "$tmp/local.json"; fi
 
 if $shared; then
-  if [ "$(chezmoi execute-template '{{ .work }}')" = true ]; then
-    echo "dotfiles-capture: --shared is refused on a work machine; the repo is public. Nothing captured." >&2
-    exit 1
-  fi
+  # The same test as the templates, and anything but a clear answer refuses.
+  case $(chezmoi execute-template '{{ if .work }}work{{ else }}personal{{ end }}' 2>/dev/null) in
+    personal) ;;
+    *) echo "dotfiles-capture: --shared is refused unless chezmoi says this is a personal machine; the repo is public. Nothing captured." >&2; exit 1 ;;
+  esac
   jq --slurpfile k "$tmp/keys.json" 'with_entries(select(.key | IN($k[0][])))' "$tmp/live.json" > "$tmp/delta.json"
   jq -s '.[0] + .[1]' "$shared_file" "$tmp/delta.json" > "$tmp/shared.new"
   cat "$tmp/shared.new" > "$shared_file"
