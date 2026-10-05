@@ -344,6 +344,10 @@ for t in personal work; do
 done
 check_eq "claude shared: no machine description" "$(jq 'has("autoMode")' "$cshared")" "false"
 check_eq "claude shared: no credential-like keys" "$(jq -r '[paths(scalars) | map(tostring) | join(".")] | .[]' "$cshared" | grep -c -i -E 'token|credential|apikey|secret|password')" "0"
+# The shared Zed file reaches the work machine too, so its agent asks before
+# acting and trusts no worktree; a personal machine loosens that locally.
+check_eq "zed shared: no bypassPermissions agent mode" "$(jq '[.. | select(. == "bypassPermissions")] | length' "$zshared")" "0"
+check_eq "zed shared: worktrees not trusted by default" "$(jq '.session.trust_all_worktrees // false' "$zshared")" "false"
 # A local file in ~/.config/chezmoi is merged over the shared one.
 oh="$tmp/overlay-home"; mkdir -p "$oh/.config/chezmoi"
 printf '{"autoMode":{"environment":"LOCAL"},"theme":"local-theme","permissions":{"allow":["Bash(local:*)","Bash(local:*)"],"deny":["Read(.env)"]}}\n' > "$oh/.config/chezmoi/claude-settings.local.json"
