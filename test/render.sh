@@ -168,7 +168,16 @@ check_file "$P/.vimrc"
 
 # Task 7: Brewfile and scripts
 check_file "$P/Brewfile"
-for pkg in coreutils gh git git-lfs go grc nvm uv vim; do check_grep "Brewfile: $pkg" "$P/Brewfile" "brew \"$pkg\""; done
+for pkg in coreutils gh git git-lfs go grc nvm uv vim \
+           node yarn cocoapods mobile-dev-inc/tap/maestro facebook/fb/idb-companion openjdk ruby spark \
+           ripgrep fd fzf bat eza zoxide zsh-autosuggestions zsh-syntax-highlighting atuin starship xh \
+           git-delta difftastic lazygit git-absorb; do
+  check_grep "Brewfile: $pkg" "$P/Brewfile" "^brew \"$pkg\""
+done
+for t in mobile-dev-inc/tap facebook/fb; do check_grep "Brewfile: tap $t" "$P/Brewfile" "^tap \"$t\""; done
+for c in iterm2 zed font-jetbrains-mono-nerd-font; do check_grep "Brewfile: cask $c" "$P/Brewfile" "^cask \"$c\""; done
+check_eq "Brewfile: exactly three casks" "$(grep -c '^cask ' "$P/Brewfile")" "3"
+check_nogrep "Brewfile: no mise yet" "$P/Brewfile" '^brew "mise"'
 check_nogrep "Brewfile: no chezmoi" "$P/Brewfile" 'chezmoi'
 brew_sh=$(render_tmpl work run_onchange_before_00-homebrew.sh.tmpl)
 check_eq "homebrew script: hash comment" "$(printf '%s\n' "$brew_sh" | grep -c '^# Brewfile hash: [0-9a-f]\{64\}$')" "1"
