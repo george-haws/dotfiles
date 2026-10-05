@@ -33,6 +33,7 @@ when = 'git diff --quiet --ignore-submodules HEAD 2>/dev/null && [ -z "$(git ls-
 command = 'git symbolic-ref --short -q HEAD 2>/dev/null || git rev-parse --short HEAD'
 shell = ["sh"]
 require_repo = true
+ignore_timeout = true
 format = "on [$output]($style) "
 style = "bold green"
 
@@ -42,6 +43,7 @@ when = '! git diff --quiet --ignore-submodules HEAD 2>/dev/null || [ -n "$(git l
 command = 'git symbolic-ref --short -q HEAD 2>/dev/null || git rev-parse --short HEAD'
 shell = ["sh"]
 require_repo = true
+ignore_timeout = true
 format = "on [$output]($style) "
 style = "bold red"
 

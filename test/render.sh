@@ -206,6 +206,7 @@ check_nogrep "prompt: git helpers gone" "$P/.config/zsh/prompt.zsh" 'git_dirty|n
 check_grep "prompt: window title kept" "$P/.config/zsh/prompt.zsh" '^title\(\)'
 check_grep "starship: clean branch green" "$P/.config/starship.toml" '^\[custom.branch_clean\]'
 check_grep "starship: dirty branch red" "$P/.config/starship.toml" '^\[custom.branch_dirty\]'
+check_eq "starship: branch modules never time out" "$(grep -c '^ignore_timeout = true$' "$P/.config/starship.toml")" "2"
 check_grep "starship: unpushed marker" "$P/.config/starship.toml" 'with \[unpushed\]\(bold magenta\)'
 check_grep "starship: prompt character" "$P/.config/starship.toml" 'success_symbol = "›"'
 check_grep "starship: builtin git_branch off" "$P/.config/starship.toml" '^\[git_branch\]'
