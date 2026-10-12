@@ -215,7 +215,7 @@ recent transcript so they survive context compaction.
 certainty, after compaction or an interrupted session, it asks him to confirm
 the tally or restart triage. It does not guess. Before the editing pass, the
 writer re-reads the document and confirms it matches the version the reviewer
-saw, apart from nothing; if it has changed, the writer says so and asks how
+saw. If it has changed, the writer says so and asks how
 to proceed.
 
 **Editing pass.** After the last finding, the writer applies every accepted
