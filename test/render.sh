@@ -352,7 +352,7 @@ for t in personal work; do
   check_mode "zed settings($t): 0600" "$z" "600"
   check_mode "claude settings($t): ~/.claude is 0700" "$tmp/$t/.claude" "700"
   check_mode "zed settings($t): ~/.config/zed is 0700" "$tmp/$t/.config/zed" "700"
-  check_eq "claude settings($t): settings.json and statusline.sh under .claude" "$(find "$tmp/$t/.claude" -type f | sed "s|$tmp/$t/.claude/||" | sort | tr '\n' ' ')" "settings.json statusline.sh "
+  check_eq "claude settings($t): hook, settings.json and statusline.sh under .claude" "$(find "$tmp/$t/.claude" -type f | sed "s|$tmp/$t/.claude/||" | sort | tr '\n' ' ')" "hooks/spec-review-nudge.sh settings.json statusline.sh "
 done
 check_eq "claude shared: no machine description" "$(jq 'has("autoMode")' "$cshared")" "false"
 check_eq "claude shared: no credential-like keys" "$(jq -r '[paths(scalars) | map(tostring) | join(".")] | .[]' "$cshared" | grep -c -i -E 'token|credential|apikey|secret|password')" "0"
@@ -574,5 +574,74 @@ check_grep "doctor: settings drift through dotfiles-capture" "$d" 'dotfiles-capt
 check_grep "doctor: settings drift is a warning" "$d" 'warn "\$out"'
 check_grep "doctor: statusLine wired" "$d" "jq -r '.statusLine.command // empty'"
 check_grep "doctor: statusline runs" "$d" 'statusline.sh" 2>/dev/null'
+
+# Task 1 (2026-10-11): cross-model review nudge hook
+hk="$P/.claude/hooks/spec-review-nudge.sh"
+[ -x "$hk" ] && pass "nudge hook: executable" || fail "nudge hook: not executable"
+bash -n "$hk" && pass "nudge hook: bash -n" || fail "nudge hook: syntax"
+: > "$tmp/hk.err"
+# Payloads are built from jq arguments, never from a JSON literal: bash 3.2
+# brace-expands {"a":..,"b":..} inside nested "$(...)" quoting.
+# Each helper leaves the hook's exit status in $rc: the hook is the last
+# command in the pipeline, so $? after the capture is its status.
+nudge() { # tool-name input-key input-value -> hook stdout, $rc
+  out=$(jq -c -n --arg t "$1" --arg k "$2" --arg v "$3" '{tool_name:$t, tool_input:{($k):$v}}' | bash "$hk" 2>>"$tmp/hk.err"); rc=$?
+  printf '%s' "$out"
+}
+nudge_raw() { # raw-stdin -> hook stdout, $rc
+  out=$(printf '%s' "$1" | bash "$hk" 2>>"$tmp/hk.err"); rc=$?
+  printf '%s' "$out"
+}
+is_nudge() { # desc output
+  if [ -z "$2" ]; then fail "$1: no output"; return; fi
+  check_eq "$1: event name" "$(printf '%s' "$2" | jq -r '.hookSpecificOutput.hookEventName')" "PostToolUse"
+  check_eq "$1: only hookSpecificOutput at top level" "$(printf '%s' "$2" | jq -c 'keys')" '["hookSpecificOutput"]'
+  check_eq "$1: only the two keys inside" "$(printf '%s' "$2" | jq -c '.hookSpecificOutput | keys')" '["additionalContext","hookEventName"]'
+  ctx=$(printf '%s' "$2" | jq -r '.hookSpecificOutput.additionalContext')
+  case "$ctx" in "This file is a superpowers spec or plan."*) pass "$1: context opens with the sentence";; *) fail "$1: context opens '$ctx'";; esac
+  for phrase in 'cross-model-review' 'self-review' 'final draft' 'has not changed' 'triage'; do
+    case "$ctx" in *"$phrase"*) pass "$1: context mentions $phrase";; *) fail "$1: context lacks '$phrase'";; esac
+  done
+}
+yes_nudge() { out=$(nudge "$2" "$3" "$4"; echo "rc=$rc"); rc=${out##*rc=}; out=${out%rc=*}; is_nudge "$1" "$out"; check_eq "$1: exit 0" "$rc" "0"; }   # desc tool key value
+no_nudge()  { out=$(nudge "$2" "$3" "$4"; echo "rc=$rc"); rc=${out##*rc=}; out=${out%rc=*}; check_eq "$1: no output" "$out" ""; check_eq "$1: exit 0" "$rc" "0"; }
+raw_silent() { out=$(nudge_raw "$2"; echo "rc=$rc"); rc=${out##*rc=}; out=${out%rc=*}; check_eq "$1: no output" "$out" ""; check_eq "$1: exit 0" "$rc" "0"; }   # desc raw-stdin
+S='docs/superpowers/specs/2026-01-01-x-design.md'
+PL='docs/superpowers/plans/2026-01-01-x.md'
+yes_nudge "Write spec" Write file_path "$S"
+yes_nudge "Write plan" Write file_path "$PL"
+yes_nudge "Write spec, absolute path outside cwd" Write file_path "/Users/someone/elsewhere/$S"
+yes_nudge "Edit spec" Edit file_path "$S"
+yes_nudge "Bash heredoc to spec" Bash command "cat > $S <<'EOF'
+hello
+EOF"
+yes_nudge "Bash append redirect to plan" Bash command "echo more >> $PL"
+yes_nudge "Bash redirect with quoted path" Bash command "printf x > \"$S\""
+yes_nudge "Bash tee to spec" Bash command "echo x | tee $S"
+yes_nudge "Bash tee -a to spec" Bash command "echo x | tee -a $S"
+yes_nudge "Bash sed -i on spec" Bash command "sed -i '' 's/a/b/' $S"
+yes_nudge "Bash sed -i via variable" Bash command "f=$S && sed -i '' 's/a/b/' \"\$f\""
+yes_nudge "Bash perl -pi on plan" Bash command "perl -pi -e 's/a/b/' $PL"
+no_nudge "Write markdown elsewhere" Write file_path "docs/notes/x.md"
+no_nudge "Write non-markdown in specs dir" Write file_path "docs/superpowers/specs/x.txt"
+no_nudge "Read tool on spec" Read file_path "$S"
+no_nudge "Bash cat spec" Bash command "cat $S"
+no_nudge "Bash grep spec" Bash command "grep -n requirement $S"
+no_nudge "Bash git diff spec" Bash command "git diff -- $S"
+no_nudge "Bash shasum spec" Bash command "shasum -a 256 $S"
+no_nudge "Bash redirect spec into another file" Bash command "cat $S > /tmp/copy.md"
+no_nudge "Bash sed without -i on spec" Bash command "sed -n '1,5p' $S"
+no_nudge "Bash grep -i on spec" Bash command "grep -i todo $S"
+no_nudge "Bash write elsewhere" Bash command "echo x > docs/notes/x.md"
+no_nudge "Bash redirect to a .md.backup beside the spec" Bash command "printf x > $S.backup"
+# Accepted false positives: telling these apart needs a shell parser. A spare
+# nudge costs one reminder the writer ignores, since the review runs at handoff.
+yes_nudge "Bash sed -i on another file then cat spec (accepted false positive)" Bash command "sed -i '' 's/a/b/' docs/notes/x.md && cat $S"
+yes_nudge "Bash redirect inside a string literal (accepted false positive)" Bash command "echo \"literal > $S\""
+raw_silent "malformed JSON" 'not json'
+raw_silent "empty stdin" ''
+raw_silent "payload without tool_input" '{"tool_name":"Write"}'
+raw_silent "payload with a null command" '{"tool_name":"Bash","tool_input":{"command":null}}'
+check_eq "nudge hook: no stderr noise across all calls" "$(wc -c < "$tmp/hk.err" | tr -d ' ')" "0"
 
 finish
