@@ -14,7 +14,7 @@
 
 - The hook must never block or fail a tool call: exit 0 with no output on anything it does not recognise, including malformed JSON.
 - Hook output on a match is exactly `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"<nudge text>"}}`.
-- Bash matching counts a path only after a redirect (`>` or `>>`), as a `tee` argument, or in an in-place `sed -i` or `perl -i` edit. Reads (`cat`, `grep`, `git diff`, `shasum`) never count.
+- Bash matching counts a path only after a redirect (`>` or `>>`), as a `tee` argument, or in an in-place `sed -i` or `perl -i` edit. Reads (`cat`, `grep`, `git diff`, `shasum`) never count. The `.md` must end the path token. Two false positives are accepted and tested as such: a redirect inside a string literal, and an in-place edit of another file in a command that also reads the spec.
 - The reviewer agent has tools `Read, Grep, Glob` only and no model of its own.
 - Reviewer model: writer Fable → `opus`; writer Opus → `fable`; anything else → `fable`.
 - Model comparison is by family (fable vs opus), not by string.
@@ -77,11 +77,15 @@ bash -n "$hk" && pass "nudge hook: bash -n" || fail "nudge hook: syntax"
 : > "$tmp/hk.err"
 # Payloads are built from jq arguments, never from a JSON literal: bash 3.2
 # brace-expands {"a":..,"b":..} inside nested "$(...)" quoting.
-nudge() { # tool-name input-key input-value -> hook stdout
-  jq -c -n --arg t "$1" --arg k "$2" --arg v "$3" '{tool_name:$t, tool_input:{($k):$v}}' | bash "$hk" 2>>"$tmp/hk.err"
+# Each helper leaves the hook's exit status in $rc: the hook is the last
+# command in the pipeline, so $? after the capture is its status.
+nudge() { # tool-name input-key input-value -> hook stdout, $rc
+  out=$(jq -c -n --arg t "$1" --arg k "$2" --arg v "$3" '{tool_name:$t, tool_input:{($k):$v}}' | bash "$hk" 2>>"$tmp/hk.err"); rc=$?
+  printf '%s' "$out"
 }
-nudge_raw() { # raw-stdin -> hook stdout
-  printf '%s' "$1" | bash "$hk" 2>>"$tmp/hk.err"
+nudge_raw() { # raw-stdin -> hook stdout, $rc
+  out=$(printf '%s' "$1" | bash "$hk" 2>>"$tmp/hk.err"); rc=$?
+  printf '%s' "$out"
 }
 is_nudge() { # desc output
   if [ -z "$2" ]; then fail "$1: no output"; return; fi
@@ -94,8 +98,9 @@ is_nudge() { # desc output
     case "$ctx" in *"$phrase"*) pass "$1: context mentions $phrase";; *) fail "$1: context lacks '$phrase'";; esac
   done
 }
-yes_nudge() { out=$(nudge "$2" "$3" "$4"); is_nudge "$1" "$out"; }      # desc tool key value
-no_nudge()  { out=$(nudge "$2" "$3" "$4"); check_eq "$1: no output" "$out" ""; }
+yes_nudge() { out=$(nudge "$2" "$3" "$4"; echo "rc=$rc"); rc=${out##*rc=}; out=${out%rc=*}; is_nudge "$1" "$out"; check_eq "$1: exit 0" "$rc" "0"; }   # desc tool key value
+no_nudge()  { out=$(nudge "$2" "$3" "$4"; echo "rc=$rc"); rc=${out##*rc=}; out=${out%rc=*}; check_eq "$1: no output" "$out" ""; check_eq "$1: exit 0" "$rc" "0"; }
+raw_silent() { out=$(nudge_raw "$2"; echo "rc=$rc"); rc=${out##*rc=}; out=${out%rc=*}; check_eq "$1: no output" "$out" ""; check_eq "$1: exit 0" "$rc" "0"; }   # desc raw-stdin
 S='docs/superpowers/specs/2026-01-01-x-design.md'
 PL='docs/superpowers/plans/2026-01-01-x.md'
 yes_nudge "Write spec" Write file_path "$S"
@@ -123,18 +128,24 @@ no_nudge "Bash redirect spec into another file" Bash command "cat $S > /tmp/copy
 no_nudge "Bash sed without -i on spec" Bash command "sed -n '1,5p' $S"
 no_nudge "Bash grep -i on spec" Bash command "grep -i todo $S"
 no_nudge "Bash write elsewhere" Bash command "echo x > docs/notes/x.md"
-check_eq "malformed JSON: no output" "$(nudge_raw 'not json')" ""
-check_eq "empty stdin: no output" "$(nudge_raw '')" ""
-check_eq "payload without tool_input: no output" "$(nudge_raw '{"tool_name":"Write"}')" ""
+no_nudge "Bash redirect to a .md.backup beside the spec" Bash command "printf x > $S.backup"
+# Accepted false positives: telling these apart needs a shell parser. A spare
+# nudge costs one reminder the writer ignores, since the review runs at handoff.
+yes_nudge "Bash sed -i on another file then cat spec (accepted false positive)" Bash command "sed -i '' 's/a/b/' docs/notes/x.md && cat $S"
+yes_nudge "Bash redirect inside a string literal (accepted false positive)" Bash command "echo \"literal > $S\""
+raw_silent "malformed JSON" 'not json'
+raw_silent "empty stdin" ''
+raw_silent "payload without tool_input" '{"tool_name":"Write"}'
+raw_silent "payload with a null command" '{"tool_name":"Bash","tool_input":{"command":null}}'
 check_eq "nudge hook: no stderr noise across all calls" "$(wc -c < "$tmp/hk.err" | tr -d ' ')" "0"
 ```
 
 - [ ] **Step 3: Run the tests and watch them fail**
 
-Run from `~/.dotfiles`:
+Run from `~/.dotfiles`. Run the suite directly so its exit status survives; the grep is only a second look at the failures:
 
 ```
-./test/render.sh 2>&1 | grep -E '^FAIL|check\(s\) failed|all checks passed'
+./test/render.sh > "$TMPDIR/render.out" 2>&1; echo "exit $?"; grep -E '^FAIL|check\(s\) failed|all checks passed' "$TMPDIR/render.out"
 ```
 
 Expected: `FAIL claude settings(personal): hook, settings.json and statusline.sh under .claude`, `FAIL nudge hook: not executable`, `FAIL nudge hook: syntax`, every `yes_nudge` case failing with `no output`, and a non-zero failed count. The `no_nudge` cases pass trivially.
@@ -153,14 +164,18 @@ Create `private_dot_claude/hooks/executable_spec-review-nudge.sh`:
 #
 # Bash matching is a string match on the command text, not a file event. A path
 # counts only when it follows a redirect, is an argument to tee, or the command
-# is an in-place sed/perl edit that mentions the path. Reads never count.
+# is an in-place sed/perl edit that mentions the path. Reads never count. Known
+# false positives, accepted: a redirect inside a string literal, and an in-place
+# edit of another file in a command that also reads the spec.
 
 input=$(cat) || exit 0
 [ -n "$input" ] || exit 0
 tool=$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null) || exit 0
 
 # A spec or plan path, with any non-space prefix (absolute paths) and no quotes.
-RE_PATH="[^[:space:]\"']*docs/superpowers/(specs|plans)/[^[:space:]\"']+[.]md"
+# The .md must end the token, so x.md.backup does not count; the Write/Edit
+# branch appends a space to the path so the same pattern applies.
+RE_PATH="[^[:space:]\"']*docs/superpowers/(specs|plans)/[^[:space:]\"']+[.]md([[:space:]\"']|$)"
 Q="[\"']?"
 RE_REDIRECT=">>?[[:space:]]*${Q}${RE_PATH}"
 RE_TEE="(^|[[:space:]|;&])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+${Q}${RE_PATH}"
@@ -170,7 +185,7 @@ hit=0
 case "$tool" in
   Write|Edit)
     path=$(jq -r '.tool_input.file_path // empty' <<<"$input" 2>/dev/null) || exit 0
-    [[ $path =~ ^${RE_PATH}$ ]] && hit=1
+    [[ "$path " =~ ^${RE_PATH} ]] && hit=1
     ;;
   Bash)
     cmd=$(jq -r '.tool_input.command // empty' <<<"$input" 2>/dev/null) || exit 0
@@ -197,13 +212,13 @@ Note on `read -r -d ''`: it returns non-zero at end of input, which is expected;
 - [ ] **Step 5: Run the tests and watch them pass**
 
 ```
-./test/render.sh 2>&1 | grep -E '^FAIL|check\(s\) failed|all checks passed'
+./test/render.sh > "$TMPDIR/render.out" 2>&1; echo "exit $?"; grep -E '^FAIL|check\(s\) failed|all checks passed' "$TMPDIR/render.out"
 ```
 
-Expected: `all checks passed`. If a `yes_nudge` Bash case fails, print the regex the case needs and test it in isolation:
+Expected: `all checks passed`, and the suite's own exit status is 0. If a `yes_nudge` Bash case fails, print the regex the case needs and test it in isolation:
 
 ```
-cmd="echo x | tee -a docs/superpowers/specs/a.md"; RE_PATH="[^[:space:]\"']*docs/superpowers/(specs|plans)/[^[:space:]\"']+[.]md"; Q="[\"']?"; RE_TEE="(^|[[:space:]|;&])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+${Q}${RE_PATH}"; [[ $cmd =~ $RE_TEE ]] && echo match || echo nomatch
+cmd="echo x | tee -a docs/superpowers/specs/a.md"; RE_PATH="[^[:space:]\"']*docs/superpowers/(specs|plans)/[^[:space:]\"']+[.]md([[:space:]\"']|$)"; Q="[\"']?"; RE_TEE="(^|[[:space:]|;&])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+${Q}${RE_PATH}"; [[ $cmd =~ $RE_TEE ]] && echo match || echo nomatch
 ```
 
 - [ ] **Step 6: Commit**
@@ -249,7 +264,7 @@ check_fgrep "README: agent is hand-managed" "$SRC/README.md" '~/.claude/agents/c
 - [ ] **Step 2: Run the tests and watch the new ones fail**
 
 ```
-./test/render.sh 2>&1 | grep -E '^FAIL|check\(s\) failed|all checks passed'
+./test/render.sh > "$TMPDIR/render.out" 2>&1; echo "exit $?"; grep -E '^FAIL|check\(s\) failed|all checks passed' "$TMPDIR/render.out"
 ```
 
 Expected: the five `claude settings(...)` hook checks fail for both machine kinds (`got 'null'` or `got ''`), the three README checks fail, nothing else.
@@ -297,10 +312,10 @@ with:
 - [ ] **Step 5: Run the tests and watch them pass**
 
 ```
-./test/render.sh 2>&1 | grep -E '^FAIL|check\(s\) failed|all checks passed'
+./test/render.sh > "$TMPDIR/render.out" 2>&1; echo "exit $?"; grep -E '^FAIL|check\(s\) failed|all checks passed' "$TMPDIR/render.out"
 ```
 
-Expected: `all checks passed`. The existing `claude settings($t): the shared file when there is no local file` check compares the whole rendered file against the shared file, so it passes automatically with the new key.
+Expected: `exit 0` and `all checks passed`. The existing `claude settings($t): the shared file when there is no local file` check compares the whole rendered file against the shared file, so it passes automatically with the new key.
 
 - [ ] **Step 6: Commit**
 
@@ -341,7 +356,7 @@ check_grep "doctor: header mentions the review files" "$d" 'cross-model review'
 - [ ] **Step 2: Run the tests and watch the new ones fail**
 
 ```
-./test/render.sh 2>&1 | grep -E '^FAIL|check\(s\) failed|all checks passed'
+./test/render.sh > "$TMPDIR/render.out" 2>&1; echo "exit $?"; grep -E '^FAIL|check\(s\) failed|all checks passed' "$TMPDIR/render.out"
 ```
 
 Expected: the six `doctor:` checks above fail, nothing else.
@@ -376,10 +391,10 @@ check "settings.json PostToolUse nudge hook" "$(jq -r '[.hooks.PostToolUse[]?.ho
 - [ ] **Step 4: Run the tests and watch them pass**
 
 ```
-./test/render.sh 2>&1 | grep -E '^FAIL|check\(s\) failed|all checks passed'
+./test/render.sh > "$TMPDIR/render.out" 2>&1; echo "exit $?"; grep -E '^FAIL|check\(s\) failed|all checks passed' "$TMPDIR/render.out"
 ```
 
-Expected: `all checks passed`. Also confirm the template still renders and is valid sh:
+Expected: `exit 0` and `all checks passed`. Also confirm the template still renders and is valid sh:
 
 ```
 chezmoi execute-template < dot_local/bin/executable_dotfiles-doctor.tmpl | sh -n && echo "doctor: sh -n ok"
@@ -429,6 +444,8 @@ The first line of your report must be exactly:
 
 Reviewer model: <the model named in your system prompt>
 
+If nothing in your system prompt or environment names the model you are running as, write exactly `Reviewer model: unknown`. Do not guess.
+
 Then either the single line `No findings.` or a numbered list of at most ten findings, most severe first. Each finding has, on its own lines:
 
 - **Severity:** `blocking`, `should-fix`, or `minor`.
@@ -470,7 +487,9 @@ Start a new Claude Code session in any directory and run `/agents`. Expected: `c
 
 - [ ] **Step 3: Smoke-test the dispatch**
 
-In that session, ask Claude: "Dispatch the cross-model-reviewer agent with model opus on `~/.dotfiles/docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md` and show me its first line." Expected: the first line is `Reviewer model:` followed by an opus identifier, and the agent did not attempt a Write or Edit. If the agent tried to edit, the `tools` line is wrong. Also note whether the Agent tool's own result reported which model ran, independent of the agent's text. If it did, that is the authoritative source the skill's Step 5 prefers; record the field name in the skill.
+In that session, ask Claude: "Dispatch the cross-model-reviewer agent with model opus on `~/.dotfiles/docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md` and show me its first line." Expected: the first line is `Reviewer model:` followed by an opus identifier, and the agent did not attempt a Write or Edit. If the agent tried to edit, the `tools` line is wrong. If the line says `unknown`, the subagent's prompt does not carry its model; record that in the spec under a `## Known deviations` heading, because the skill's family check will then always ask George.
+
+Then open `/tasks` in that session and find the dispatched agent. Expected: it shows the model that actually ran, and that model is opus. This is the runtime truth the self-report is checked against. Also note whether the Agent tool's own result text reported which model ran, independent of the agent's report. If it did, that is the authoritative source the skill's Step 5 prefers; record the field name in the skill.
 
 No commit: this file is hand-managed.
 
@@ -535,9 +554,11 @@ Hash the document, and for a plan also its spec:
 shasum -a 256 <absolute path to document> [<absolute path to spec>]
 ```
 
-Announce the dispatch in one message that contains the reviewer model and the hashes, for example:
+Announce the dispatch in one message that contains the reviewer model and the complete 64-character hashes. Never abbreviate them; the later comparisons are made against this message. For example:
 
-> Dispatching the cross-model review. Reviewer: opus. sha256 of the plan `3f2a…`, of the spec `9c1d…`.
+> Dispatching the cross-model review. Reviewer: opus.
+> sha256 plan `3f2a9c1d7e8b4a6f0c2d5e9b1a7f3c8e6d4b2a0f9e8c7d6b5a4f3e2d1c0b9a8f`
+> sha256 spec `9c1d3f2a8e7b6a5f4c3d2e1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f`
 
 Those hashes stay in the transcript so they survive compaction.
 
@@ -563,7 +584,7 @@ Check all of these before presenting anything:
 
 1. **Complete.** The Agent call returned a report, not an error, a timeout, or text that stops mid-finding.
 2. **Model line.** The first line is `Reviewer model: <something>`.
-3. **Different family.** The reported model's family differs from yours: fable versus opus. Compare families, not strings; the reviewer may name itself with an alias or a full model ID. If the Agent result itself carries runtime model metadata, that is authoritative and the self-reported line is a fallback.
+3. **Different family.** The reported model's family differs from yours: fable versus opus. Compare families, not strings; the reviewer may name itself with an alias or a full model ID. `Reviewer model: unknown` fails this check. If the Agent result itself carries runtime model metadata, that is authoritative and the self-reported line is a fallback. George can confirm the real model in the `/tasks` view.
 4. **Still fresh.** Re-run the `shasum` from Step 3. Every hash matches.
 
 If any check fails, tell George in one line that the cross-model review did not complete and which check failed, then ask whether to retry or proceed without it. Never substitute your own model. Never present a same-model or stale review as a cross-model review.
@@ -665,11 +686,7 @@ In the same session, ask Claude to treat the throwaway file as a real spec: "Run
 
 Decide a mix: apply at least one, skip at least one. Expected: the tally line appears from the second finding onward; the editing pass changes only the applied ones; the edits produce nudges but no second dispatch; the flow then resumes with the spec review gate question.
 
-- [ ] **Step 4: Zero findings**
-
-Replace the throwaway file with a trivially correct one-paragraph spec and ask for the review again. Expected: one line naming the reviewer model and saying there were no findings, then the flow resumes with no questions.
-
-- [ ] **Step 5: Stale document**
+- [ ] **Step 4: Stale document**
 
 Ask Claude to dispatch the review again. While the reviewer is running, edit the throwaway file by hand in another terminal:
 
@@ -679,21 +696,33 @@ echo "Edited during review." >> ~/src/personal-site/docs/superpowers/specs/2026-
 
 Expected: when the reviewer returns, Claude reports a hash mismatch and asks whether to re-run or proceed, without presenting findings.
 
-- [ ] **Step 6: Forced model override**
+- [ ] **Step 5: Forced model override**
 
-First confirm the environment variable name in the installed Claude Code's documentation:
+First confirm the environment variable names in the installed Claude Code:
 
 ```
 grep -rho 'CLAUDE_CODE_SUBAGENT_MODEL[A-Z_]*' "$(dirname "$(readlink -f "$(command -v claude)")")" 2>/dev/null | sort -u
 ```
 
-Use the variable that forces the subagent model (the one with `FORCE` if it exists, otherwise `CLAUDE_CODE_SUBAGENT_MODEL`). Start a new session with it set to the writer's own model:
+Expected: both `CLAUDE_CODE_SUBAGENT_MODEL` and `CLAUDE_CODE_SUBAGENT_MODEL_FORCE`. The first names the model, the second is an on/off flag that makes it override per-dispatch model choices. Start a new session with the model set to the writer's own family and the flag on:
 
 ```
-CLAUDE_CODE_SUBAGENT_MODEL_FORCE=fable claude
+CLAUDE_CODE_SUBAGENT_MODEL=fable CLAUDE_CODE_SUBAGENT_MODEL_FORCE=1 claude
 ```
 
-Ask for the review of the throwaway spec. Expected: Claude reports that the cross-model review did not complete because the reviewer reported the same model family, and asks whether to retry or proceed. If neither variable exists in this version, record that the case could not be exercised and move on.
+Ask for the review of the throwaway spec. Expected: Claude reports that the cross-model review did not complete because the reviewer reported the same model family, and asks whether to retry or proceed. Confirm in `/tasks` that the subagent did run on fable. If the grep shows only one of the two variables, or neither, record in the spec's `## Known deviations` that the case could not be exercised on this version and move on.
+
+- [ ] **Step 6: The doctor fails when a hand-managed file is missing**
+
+```
+mv ~/.claude/skills/cross-model-review/SKILL.md ~/.claude/skills/cross-model-review/SKILL.md.aside
+dotfiles-doctor > "$TMPDIR/doctor.out" 2>&1; echo "exit $?"
+grep -F 'cross-model-review/SKILL.md' "$TMPDIR/doctor.out"
+mv ~/.claude/skills/cross-model-review/SKILL.md.aside ~/.claude/skills/cross-model-review/SKILL.md
+dotfiles-doctor > /dev/null 2>&1; echo "exit $?"
+```
+
+Expected: the first run prints `exit 1` and a `[FAIL] .claude/skills/cross-model-review/SKILL.md missing: hand-managed, see docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md in ~/.dotfiles` line. The second run prints `exit 0`.
 
 - [ ] **Step 7: Clean up and record**
 
@@ -702,7 +731,7 @@ rm ~/src/personal-site/docs/superpowers/specs/2026-10-11-throwaway-design.md
 cd ~/src/personal-site && git status --short docs/superpowers
 ```
 
-Expected: nothing left behind. If any step above did not behave as expected, write the deviation into the spec under a new `## Known deviations` heading in `~/.dotfiles/docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md` and commit it:
+Expected: nothing left behind. If any step above did not behave as expected, or a step above asked for one, write the deviation into the spec under a `## Known deviations` heading in `~/.dotfiles/docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md` and commit it:
 
 ```bash
 cd ~/.dotfiles
