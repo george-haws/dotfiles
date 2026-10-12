@@ -33,10 +33,13 @@ live in George's own config.
   unreviewed spec write and blocks the turn. That gate is not built now because
   it would fire on every brainstorming iteration, not only at handoff, and a
   Stop hook has no soft mode.
-- **Loose user config, not a plugin or fork.** The hook entry and script go in
-  the chezmoi-managed dotfiles. The skill and the reviewer agent go in
-  `~/.claude/skills/` and `~/.claude/agents/`, next to George's other custom
-  skills, which chezmoi does not manage.
+- **Loose user config, not a plugin or fork.** The hook entry, the hook
+  script, the skill and the reviewer agent all go in the chezmoi-managed
+  dotfiles, under `private_dot_claude/`. The skill and agent were at first
+  hand-managed in `~/.claude/skills/` and `~/.claude/agents/`, next to
+  George's other custom skills; that was reversed on 2026-10-11 because the
+  hook and settings already travel to every machine, so the files they name
+  must travel with them. The other custom skills stay unmanaged.
 
 ## Components
 
@@ -269,9 +272,9 @@ No review log is written into the document.
 |------|-----------|--------|
 | `~/.dotfiles/.shared/claude-settings.json` | chezmoi | Add `hooks.PostToolUse` entry |
 | `~/.dotfiles/private_dot_claude/hooks/executable_spec-review-nudge.sh` | chezmoi | New hook script |
-| `~/.dotfiles/dot_local/bin/executable_dotfiles-doctor.tmpl` | chezmoi | Check that the skill and agent files exist |
-| `~/.claude/skills/cross-model-review/SKILL.md` | hand | New skill |
-| `~/.claude/agents/cross-model-reviewer.md` | hand | New agent |
+| `~/.dotfiles/dot_local/bin/executable_dotfiles-doctor.tmpl` | chezmoi | Warn when the skill, agent or CLAUDE.md drift from source |
+| `~/.dotfiles/private_dot_claude/skills/cross-model-review/SKILL.md` | chezmoi | New skill |
+| `~/.dotfiles/private_dot_claude/agents/cross-model-reviewer.md` | chezmoi | New agent |
 
 ## Testing
 
@@ -289,13 +292,13 @@ No review log is written into the document.
      directory, and malformed JSON: no output, exit 0.
    - `Bash` commands that only read a spec: `cat`, `grep`, `git diff`, and
      `shasum` on a spec path: no output, exit 0.
-2. **Doctor check.** `dotfiles-doctor` fails if
-   `~/.claude/skills/cross-model-review/SKILL.md` or
-   `~/.claude/agents/cross-model-reviewer.md` is missing, since chezmoi
-   deploys the hook but not those files.
+2. **Doctor check.** `dotfiles-doctor` warns if
+   `~/.claude/skills/cross-model-review/SKILL.md`,
+   `~/.claude/agents/cross-model-reviewer.md` or `~/.claude/CLAUDE.md` differ
+   from their chezmoi source, in the same way it warns for starship and atuin.
 3. **Render test.** Run `chezmoi apply` and confirm `~/.claude/settings.json`
-   contains the PostToolUse entry and `~/.claude/hooks/spec-review-nudge.sh`
-   is executable.
+   contains the PostToolUse entry, `~/.claude/hooks/spec-review-nudge.sh`
+   is executable, and the skill and agent land byte for byte.
 4. **End-to-end**, in a fresh Claude Code session with a throwaway spec under
    `docs/superpowers/specs/`:
    - Happy path: the nudge appears, the writer finishes its self-review before
@@ -340,10 +343,11 @@ behavior.
    unrelated to this work (the Oct 4 Brewfile and CLI tools were never
    applied; `dotfiles-capture` is not installed). The cross-model section
    itself is all OK.
-6. The doctor's failure message points at this spec, but the verbatim bodies
-   of the two hand-managed files live in the plan
-   (`docs/superpowers/plans/2026-10-11-cross-model-spec-review.md`, Tasks 4
-   and 5); a fresh machine rebuilds them from there.
+6. Resolved 2026-10-11: the skill and agent are now chezmoi-managed files
+   under `private_dot_claude/`, so a fresh machine gets them from
+   `chezmoi apply` and the doctor's "rebuild from the plan" message is gone.
+   The verbatim copies in the plan's Tasks 4 and 5 are historical and may
+   drift; the source tree is authoritative.
 7. The skill's stale-review wording offers "retry or proceed without it" where
    this spec says "re-run the review or proceed on the stale findings"; the
    skill is the stricter of the two and stands.

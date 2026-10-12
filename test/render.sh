@@ -352,7 +352,7 @@ for t in personal work; do
   check_mode "zed settings($t): 0600" "$z" "600"
   check_mode "claude settings($t): ~/.claude is 0700" "$tmp/$t/.claude" "700"
   check_mode "zed settings($t): ~/.config/zed is 0700" "$tmp/$t/.config/zed" "700"
-  check_eq "claude settings($t): hook, settings.json and statusline.sh under .claude" "$(find "$tmp/$t/.claude" -type f | sed "s|$tmp/$t/.claude/||" | sort | tr '\n' ' ')" "hooks/spec-review-nudge.sh settings.json statusline.sh "
+  check_eq "claude settings($t): CLAUDE.md, agent, hook, settings.json, skill and statusline.sh under .claude" "$(find "$tmp/$t/.claude" -type f | sed "s|$tmp/$t/.claude/||" | LC_ALL=C sort | tr '\n' ' ')" "CLAUDE.md agents/cross-model-reviewer.md hooks/spec-review-nudge.sh settings.json skills/cross-model-review/SKILL.md statusline.sh "
 done
 check_eq "claude shared: no machine description" "$(jq 'has("autoMode")' "$cshared")" "false"
 check_eq "claude shared: no credential-like keys" "$(jq -r '[paths(scalars) | map(tostring) | join(".")] | .[]' "$cshared" | grep -c -i -E 'token|credential|apikey|secret|password')" "0"
@@ -674,15 +674,28 @@ for t in personal work; do
   check_eq "claude settings($t): no other hook events" "$(jq -c '.hooks | keys' "$c")" '["PostToolUse"]'
 done
 check_fgrep "README: nudge hook documented" "$SRC/README.md" 'hooks/spec-review-nudge.sh'
-check_fgrep "README: skill is hand-managed" "$SRC/README.md" '~/.claude/skills/cross-model-review/SKILL.md'
-check_fgrep "README: agent is hand-managed" "$SRC/README.md" '~/.claude/agents/cross-model-reviewer.md'
+check_fgrep "README: skill documented" "$SRC/README.md" '~/.claude/skills/cross-model-review/SKILL.md'
+check_fgrep "README: agent documented" "$SRC/README.md" '~/.claude/agents/cross-model-reviewer.md'
+check_fgrep "README: global CLAUDE.md documented" "$SRC/README.md" '~/.claude/CLAUDE.md'
+check_nogrep "README: nothing called hand-managed any more" "$SRC/README.md" 'hand-managed'
 
 # Task 3 (2026-10-11): doctor checks the cross-model review files
 check_grep "doctor: section for cross-model review" "$d" '^echo "claude cross-model review"'
-check_fgrep "doctor: skill file checked" "$d" '$HOME/.claude/skills/cross-model-review/SKILL.md'
-check_fgrep "doctor: agent file checked" "$d" '$HOME/.claude/agents/cross-model-reviewer.md'
-check_fgrep "doctor: missing file names the spec" "$d" 'docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md'
-check_fgrep "doctor: hook wired in settings" "$d" 'spec-review-nudge.sh'
-check_grep "doctor: header mentions the review files" "$d" 'cross-model review'
+check_fgrep "doctor: CLAUDE.md, skill and agent drift through chezmoi verify" "$d" 'chezmoi verify ~/.claude/CLAUDE.md ~/.claude/skills/cross-model-review/SKILL.md ~/.claude/agents/cross-model-reviewer.md'
+check_grep "doctor: review file drift is a warning" "$d" 'warn "CLAUDE.md, cross-model-review skill or reviewer agent drifted'
+check_nogrep "doctor: no hand-managed presence check" "$d" 'hand-managed'
+check_fgrep "doctor: hook wired in settings" "$d" 'index("~/.claude/hooks/spec-review-nudge.sh")'
+check_grep "doctor: header mentions the review files" "$d" '^# cross-model review files'
+
+# 2026-10-11: CLAUDE.md, the skill and the agent are rendered verbatim
+for t in personal work; do
+  for f in CLAUDE.md skills/cross-model-review/SKILL.md agents/cross-model-reviewer.md; do
+    check_eq "claude($t): $f matches source" "$(cat "$tmp/$t/.claude/$f")" "$(cat "$SRC/private_dot_claude/$f")"
+  done
+done
+check_grep "CLAUDE.md: status footer rule" "$SRC/private_dot_claude/CLAUDE.md" '^# Status footer'
+check_grep "CLAUDE.md: progress narration rule" "$SRC/private_dot_claude/CLAUDE.md" '^# Progress narration'
+check_grep "skill: frontmatter name" "$SRC/private_dot_claude/skills/cross-model-review/SKILL.md" '^name: cross-model-review'
+check_grep "agent: frontmatter name" "$SRC/private_dot_claude/agents/cross-model-reviewer.md" '^name: cross-model-reviewer'
 
 finish

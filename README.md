@@ -39,7 +39,7 @@ GH_CONFIG_DIR=~/.config/gh-personal gh auth login
 
 - `chezmoi edit --apply ~/.zshrc`, or edit in `~/.dotfiles` and run `chezmoi apply`.
 - `chezmoi re-add` after editing a managed file in place. Claude Code and Zed settings work differently; see below.
-- `dotfiles-doctor` checks identity, SSH, gh, signing, PATH, the Brewfile, config drift, the Claude Code status line, and startup time.
+- `dotfiles-doctor` checks identity, SSH, gh, signing, PATH, the Brewfile, config drift, the Claude Code status line and review files, and startup time.
 - `chezmoi upgrade` updates the chezmoi binary. Nothing else will.
 - `./test/render.sh` renders both machine kinds into a temp dir and asserts on the result.
 
@@ -71,7 +71,7 @@ dotfiles-capture --from ~/.config/zed/settings.json.pre-chezmoi zed
 
 Then read the local files and delete anything that should come from the shared file instead.
 
-Claude Code's status line is `~/.claude/statusline.sh`. It shows the session name, model, context used and cost, then `Started` (the first thing you asked), `Now` (the latest) and `Doing` (the current step and how long it has taken), all read from the session transcript. `~/.claude/hooks/spec-review-nudge.sh` is a PostToolUse hook, registered in the shared settings, that fires when a tool call writes a superpowers spec or plan and reminds Claude to run the `cross-model-review` skill before handing the document over. That skill, at `~/.claude/skills/cross-model-review/SKILL.md`, and the read-only agent it dispatches, at `~/.claude/agents/cross-model-reviewer.md`, are hand-managed and not in this repo; `dotfiles-doctor` fails when either is missing. The design is in `docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md`. Nothing else under `~/.claude` is managed; skills in general are an open question, recorded under Future work in `docs/superpowers/specs/2026-10-04-modern-cli-tools-design.md`.
+Claude Code's status line is `~/.claude/statusline.sh`. It shows the session name, model, context used and cost, then `Started` (the first thing you asked), `Now` (the latest) and `Doing` (the current step and how long it has taken), all read from the session transcript. `~/.claude/hooks/spec-review-nudge.sh` is a PostToolUse hook, registered in the shared settings, that fires when a tool call writes a superpowers spec or plan and reminds Claude to run the `cross-model-review` skill before handing the document over. That skill, at `~/.claude/skills/cross-model-review/SKILL.md`, and the read-only agent it dispatches, at `~/.claude/agents/cross-model-reviewer.md`, are plain files in this repo under `private_dot_claude/`, so they travel with the hook; `dotfiles-doctor` warns when either has drifted from source. The design is in `docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md`. The global instructions file `~/.claude/CLAUDE.md`, which holds the status footer and progress narration rules, is managed the same way. Nothing else under `~/.claude` is managed; the other skills are an open question, recorded under Future work in `docs/superpowers/specs/2026-10-04-modern-cli-tools-design.md`.
 
 ## Design
 

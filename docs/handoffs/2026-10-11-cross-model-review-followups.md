@@ -13,11 +13,11 @@ All of these came out of the task reviews and the final whole-branch review. Non
 
 - **Where:** `docs/superpowers/plans/2026-10-11-cross-model-spec-review.md:587`, inside the Task 5 verbatim `SKILL.md` block.
 - **Problem:** The sentence "If the Agent result itself carries runtime model metadata, that is authoritative and the self-reported line is a fallback" was replaced in the live skill but not in the plan. The spec's Known deviation 6 tells a fresh machine to rebuild the skill from this block, so the stale wording would come back.
-- **Fix:** Replace that sentence with the live skill's text from `~/.claude/skills/cross-model-review/SKILL.md:72`, and drop the trailing "George can confirm the real model in the `/tasks` view." sentence from both (see A2).
+- **Fix:** Replace that sentence with the live skill's text from `~/.claude/skills/cross-model-review/SKILL.md:72`, and drop the trailing "George can confirm the real model in the `/tasks` view." sentence from both (see A2). Since Part B, the skill's source of truth is `private_dot_claude/skills/cross-model-review/SKILL.md`; edit there and `chezmoi apply`, or edit live and `chezmoi re-add`.
 
 ### A2. Skill wording
 
-File: `~/.claude/skills/cross-model-review/SKILL.md` (hand-managed; also mirror each change into the plan's Task 5 block).
+File: `private_dot_claude/skills/cross-model-review/SKILL.md` (chezmoi-managed since Part B; also mirror each change into the plan's Task 5 block).
 
 - **L72:** ends by saying the `/tasks` point twice. Delete the final sentence "George can confirm the real model in the `/tasks` view."
 - **L72:** "fable versus opus" assumes the writer is one of those two. Reword to "differs from your own model's family".
@@ -27,7 +27,7 @@ File: `~/.claude/skills/cross-model-review/SKILL.md` (hand-managed; also mirror 
 
 ### A3. Agent wording
 
-File: `~/.claude/agents/cross-model-reviewer.md` (hand-managed; mirror into the plan's Task 4 block).
+File: `private_dot_claude/agents/cross-model-reviewer.md` (chezmoi-managed since Part B; mirror into the plan's Task 4 block).
 
 - **L13:** the template `Reviewer model: <the model named in your system prompt>` is not in backticks while L15's fallback is, and L13 names only "your system prompt" where L15 says "system prompt or environment". Make the two consistent.
 - **L7:** "You run on a different model from that agent" is unverifiable by the reviewer and could discourage it from noticing a same-model run. Drop the sentence or soften to "You were dispatched to run on a different model".
@@ -54,13 +54,15 @@ File: `test/render.sh`.
 
 File: `dot_local/bin/executable_dotfiles-doctor.tmpl:106-108`.
 
-- The failure message points at the spec, but the spec does not contain the files' bodies. Point at the plan instead, or at both: "see the plan's Tasks 4 and 5 for the file bodies". If Part B puts the files under chezmoi, this check and its message go away entirely.
+- Moot: Part B replaced this check with a `chezmoi verify` drift warning.
 
 ### Suggested order
 
 A1 and A2 together (one editing pass over the skill and its plan mirror), then A3, then A4 with its tests, then A5, then A6 unless Part B makes it moot. Run `./test/render.sh` directly and read its exit status after each repo change. Re-apply the hook with `chezmoi apply ~/.claude/hooks/spec-review-nudge.sh` after A4; the skill and agent files take effect in the next Claude Code process.
 
 ## Part B: should the skill and agent come under chezmoi?
+
+**Resolved 2026-10-11: Option 1 taken.** `private_dot_claude/skills/cross-model-review/SKILL.md`, `private_dot_claude/agents/cross-model-reviewer.md` and `private_dot_claude/CLAUDE.md` are in the source tree. The doctor's two presence checks became one `chezmoi verify` warning, A6 is moot, and the README, both specs and the render tests were updated. The rest of this section is kept as the record of the decision.
 
 ### The decision as made
 

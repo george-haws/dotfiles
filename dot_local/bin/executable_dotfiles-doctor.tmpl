@@ -1,8 +1,8 @@
 #!/bin/sh
 # Verifies the live machine: git identity by remote, SSH keys, gh account,
-# signing, PATH, the Brewfile, config drift, the Claude Code status line and
-# cross-model review files,
-# shell startup, and chezmoi freshness. Exit 1 on any failure.
+# signing, PATH, the Brewfile, config drift, the Claude Code status line, the
+# cross-model review files and global CLAUDE.md, shell startup, and chezmoi
+# freshness. Exit 1 on any failure.
 set -u
 
 work={{ .work }}
@@ -103,10 +103,11 @@ sl_out=$(printf '{"model":{"display_name":"doctor"}}' | "$HOME/.claude/statuslin
 case "$sl_out" in *doctor*" ctx"*) pass "statusline.sh prints the header row" ;; *) fail "statusline.sh output: '$sl_out'" ;; esac
 
 echo "claude cross-model review"
-spec_doc="docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md"
-for f in "$HOME/.claude/skills/cross-model-review/SKILL.md" "$HOME/.claude/agents/cross-model-reviewer.md"; do
-  if [ -f "$f" ]; then pass "${f#"$HOME"/} present"; else fail "${f#"$HOME"/} missing: hand-managed, see $spec_doc in ~/.dotfiles"; fi
-done
+if chezmoi verify ~/.claude/CLAUDE.md ~/.claude/skills/cross-model-review/SKILL.md ~/.claude/agents/cross-model-reviewer.md >/dev/null 2>&1; then
+  pass "CLAUDE.md, cross-model-review skill and reviewer agent match source"
+else
+  warn "CLAUDE.md, cross-model-review skill or reviewer agent drifted: chezmoi diff, then chezmoi re-add <file> or chezmoi apply"
+fi
 if [ -x "$HOME/.claude/hooks/spec-review-nudge.sh" ]; then pass "spec-review-nudge.sh executable"; else fail "spec-review-nudge.sh missing or not executable"; fi
 check "settings.json PostToolUse nudge hook" "$(jq -r '[.hooks.PostToolUse[]?.hooks[]?.command] | index("~/.claude/hooks/spec-review-nudge.sh") != null' "$HOME/.claude/settings.json" 2>/dev/null)" "true"
 
