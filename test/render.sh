@@ -659,4 +659,12 @@ check_fgrep "README: nudge hook documented" "$SRC/README.md" 'hooks/spec-review-
 check_fgrep "README: skill is hand-managed" "$SRC/README.md" '~/.claude/skills/cross-model-review/SKILL.md'
 check_fgrep "README: agent is hand-managed" "$SRC/README.md" '~/.claude/agents/cross-model-reviewer.md'
 
+# Task 3 (2026-10-11): doctor checks the cross-model review files
+check_grep "doctor: section for cross-model review" "$d" '^echo "claude cross-model review"'
+check_fgrep "doctor: skill file checked" "$d" '$HOME/.claude/skills/cross-model-review/SKILL.md'
+check_fgrep "doctor: agent file checked" "$d" '$HOME/.claude/agents/cross-model-reviewer.md'
+check_fgrep "doctor: missing file names the spec" "$d" 'docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md'
+check_fgrep "doctor: hook wired in settings" "$d" 'spec-review-nudge.sh'
+check_grep "doctor: header mentions the review files" "$d" 'cross-model review'
+
 finish
