@@ -12,7 +12,7 @@ fi
 
 mkdir -p "$HOME/.local/bin"
 if [ ! -x "$HOME/.local/bin/chezmoi" ]; then
-  sh -c "$(curl -fsLS get.chezmoi.io)" -- -b "$HOME/.local/bin"
+  sh -c "$(curl -fsLS --proto '=https' https://get.chezmoi.io)" -- -b "$HOME/.local/bin"
 fi
 
 exec "$HOME/.local/bin/chezmoi" init --source "$HOME/.dotfiles" --apply --guess-repo-url=false https://github.com/george-haws/dotfiles.git
