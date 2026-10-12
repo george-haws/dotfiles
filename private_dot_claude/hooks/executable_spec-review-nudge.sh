@@ -16,9 +16,10 @@ input=$(cat) || exit 0
 tool=$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null) || exit 0
 
 # A spec or plan path, with any non-space prefix (absolute paths) and no quotes.
-# The .md must end the token, so x.md.backup does not count; the Write/Edit
-# branch appends a space to the path so the same pattern applies.
-RE_PATH="[^[:space:]\"']*docs/superpowers/(specs|plans)/[^[:space:]\"']+[.]md([[:space:]\"']|$)"
+# The .md must end the token (whitespace, a quote, a shell separator, or end of
+# string), so x.md.backup does not count; the Write/Edit branch appends a space
+# to the path so the same pattern applies.
+RE_PATH="[^[:space:]\"']*docs/superpowers/(specs|plans)/[^[:space:]\"']+[.]md([[:space:]\"';&|()<>]|$)"
 Q="[\"']?"
 RE_REDIRECT=">>?[[:space:]]*${Q}${RE_PATH}"
 RE_TEE="(^|[[:space:]|;&])tee([[:space:]]+-[a-zA-Z]+)*[[:space:]]+${Q}${RE_PATH}"
