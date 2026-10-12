@@ -646,4 +646,17 @@ raw_silent "payload without tool_input" '{"tool_name":"Write"}'
 raw_silent "payload with a null command" '{"tool_name":"Bash","tool_input":{"command":null}}'
 check_eq "nudge hook: no stderr noise across all calls" "$(wc -c < "$tmp/hk.err" | tr -d ' ')" "0"
 
+# Task 2 (2026-10-11): nudge hook registered in shared Claude settings
+for t in personal work; do
+  c="$tmp/$t/.claude/settings.json"
+  check_eq "claude settings($t): one PostToolUse hook group" "$(jq -r '.hooks.PostToolUse | length' "$c")" "1"
+  check_eq "claude settings($t): hook matcher" "$(jq -r '.hooks.PostToolUse[0].matcher' "$c")" "Write|Edit|Bash"
+  check_eq "claude settings($t): hook type" "$(jq -r '.hooks.PostToolUse[0].hooks[0].type' "$c")" "command"
+  check_eq "claude settings($t): hook command" "$(jq -r '.hooks.PostToolUse[0].hooks[0].command' "$c")" "~/.claude/hooks/spec-review-nudge.sh"
+  check_eq "claude settings($t): no other hook events" "$(jq -c '.hooks | keys' "$c")" '["PostToolUse"]'
+done
+check_fgrep "README: nudge hook documented" "$SRC/README.md" 'hooks/spec-review-nudge.sh'
+check_fgrep "README: skill is hand-managed" "$SRC/README.md" '~/.claude/skills/cross-model-review/SKILL.md'
+check_fgrep "README: agent is hand-managed" "$SRC/README.md" '~/.claude/agents/cross-model-reviewer.md'
+
 finish

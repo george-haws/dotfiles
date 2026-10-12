@@ -71,7 +71,7 @@ dotfiles-capture --from ~/.config/zed/settings.json.pre-chezmoi zed
 
 Then read the local files and delete anything that should come from the shared file instead.
 
-Claude Code's status line is `~/.claude/statusline.sh`. It shows the session name, model, context used and cost, then `Started` (the first thing you asked), `Now` (the latest) and `Doing` (the current step and how long it has taken), all read from the session transcript. Nothing else under `~/.claude` is managed; skills are an open question, recorded under Future work in `docs/superpowers/specs/2026-10-04-modern-cli-tools-design.md`.
+Claude Code's status line is `~/.claude/statusline.sh`. It shows the session name, model, context used and cost, then `Started` (the first thing you asked), `Now` (the latest) and `Doing` (the current step and how long it has taken), all read from the session transcript. `~/.claude/hooks/spec-review-nudge.sh` is a PostToolUse hook, registered in the shared settings, that fires when a tool call writes a superpowers spec or plan and reminds Claude to run the `cross-model-review` skill before handing the document over. That skill, at `~/.claude/skills/cross-model-review/SKILL.md`, and the read-only agent it dispatches, at `~/.claude/agents/cross-model-reviewer.md`, are hand-managed and not in this repo; `dotfiles-doctor` fails when either is missing. The design is in `docs/superpowers/specs/2026-10-11-cross-model-spec-review-design.md`. Nothing else under `~/.claude` is managed; skills in general are an open question, recorded under Future work in `docs/superpowers/specs/2026-10-04-modern-cli-tools-design.md`.
 
 ## Design
 
