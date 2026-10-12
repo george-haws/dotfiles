@@ -5,6 +5,10 @@
 # George. Anything else, including malformed input, exits 0 with no output so a
 # hook problem can never block a tool call.
 #
+# Inside a subagent (the input carries a non-empty agent_id), the writer cannot
+# triage findings with George, so the context instead tells it to leave the
+# review alone and report the change to its caller, which runs the review.
+#
 # Bash matching is a string match on the command text, not a file event. A path
 # counts only when it follows a redirect, is an argument to tee, or the command
 # is an in-place sed/perl edit that mentions the path. Reads never count. Known
@@ -41,10 +45,17 @@ case "$tool" in
     ;;
 esac
 [ "$hit" = 1 ] || exit 0
+agent=$(jq -r '.agent_id // empty' <<<"$input" 2>/dev/null) || exit 0
 
+if [ -n "$agent" ]; then
+read -r -d '' NUDGE <<'EOF'
+This file is a superpowers spec or plan, and you are running as a subagent. Do not run the cross-model review yourself. When you report back, tell your caller that you changed this spec or plan so it can run the `cross-model-review` skill before the document goes to George.
+EOF
+else
 read -r -d '' NUDGE <<'EOF'
 This file is a superpowers spec or plan. Before you hand it to George for review, run the `cross-model-review` skill on it. Sequence: finish the superpowers self-review and every fix that comes out of it first, then run the cross-model review on the final draft, immediately before the user review gate. A review counts only if the document has not changed since it ran. The one exception is edits that come out of George's triage of the findings; those are his decisions and do not need a second review.
 EOF
+fi
 
 jq -n -c --arg ctx "$NUDGE" \
   '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}'

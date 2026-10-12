@@ -644,6 +644,24 @@ raw_silent "malformed JSON" 'not json'
 raw_silent "empty stdin" ''
 raw_silent "payload without tool_input" '{"tool_name":"Write"}'
 raw_silent "payload with a null command" '{"tool_name":"Bash","tool_input":{"command":null}}'
+# Subagent variant: a payload carrying agent_id gets the report-to-caller text.
+sub_payload() { jq -c -n --arg p "$1" '{tool_name:"Write", tool_input:{file_path:$p}, agent_id:"abc123"}'; }   # path -> payload
+out=$(nudge_raw "$(sub_payload "$S")"; echo "rc=$rc"); rc=${out##*rc=}; out=${out%rc=*}
+check_eq "subagent Write spec: event name" "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.hookEventName')" "PostToolUse"
+check_eq "subagent Write spec: only hookSpecificOutput at top level" "$(printf '%s' "$out" | jq -c 'keys')" '["hookSpecificOutput"]'
+check_eq "subagent Write spec: only the two keys inside" "$(printf '%s' "$out" | jq -c '.hookSpecificOutput | keys')" '["additionalContext","hookEventName"]'
+check_eq "subagent Write spec: exit 0" "$rc" "0"
+ctx=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')
+case "$ctx" in "This file is a superpowers spec or plan, and you are running as a subagent."*) pass "subagent Write spec: context opens with the subagent sentence";; *) fail "subagent Write spec: context opens '$ctx'";; esac
+for phrase in 'tell your caller' 'cross-model-review'; do
+  case "$ctx" in *"$phrase"*) pass "subagent Write spec: context mentions $phrase";; *) fail "subagent Write spec: context lacks '$phrase'";; esac
+done
+out=$(nudge Write file_path "$S")
+case "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.additionalContext')" in
+  "This file is a superpowers spec or plan. Before you hand it"*) pass "main Write spec: context is the main nudge, not the subagent one";;
+  *) fail "main Write spec: context is not the main nudge";;
+esac
+raw_silent "subagent Write markdown elsewhere" "$(sub_payload docs/notes/x.md)"
 check_eq "nudge hook: no stderr noise across all calls" "$(wc -c < "$tmp/hk.err" | tr -d ' ')" "0"
 
 # Task 2 (2026-10-11): nudge hook registered in shared Claude settings

@@ -94,6 +94,15 @@ redirects, and in-place `sed` edits, which the string match does catch.
 > ran. The one exception is edits that come out of George's triage of the
 > findings; those are his decisions and do not need a second review.
 
+**Subagent variant.** When the hook input carries a non-empty `agent_id`, the
+write came from inside a subagent, which cannot triage findings with George.
+The hook then emits the same JSON structure with this text instead:
+
+> This file is a superpowers spec or plan, and you are running as a subagent.
+> Do not run the cross-model review yourself. When you report back, tell your
+> caller that you changed this spec or plan so it can run the
+> `cross-model-review` skill before the document goes to George.
+
 The hook fires on every matching Write, Edit, or Bash call, including the
 writer's own self-review fixes and the edits that come out of triage. The
 nudge is idempotent by instruction: one review per handoff, on the final
