@@ -55,9 +55,12 @@ change is needed.
 1. Read the hook payload JSON from stdin.
 2. Determine the candidate text to match:
    - For `Write` and `Edit`, `tool_input.file_path`.
-   - For `Bash`, `tool_input.command`. This catches heredocs and redirects
-     that create or modify a spec or plan.
-3. If the text contains a path matching `docs/superpowers/specs/*.md` or
+   - For `Bash`, `tool_input.command`, but only the parts of it that write.
+     A path counts when it follows a redirect (`>` or `>>`), is an argument
+     to `tee`, or appears in an in-place edit (`sed -i` or `perl -i`). A path
+     that only appears as a read, such as `cat`, `grep`, `git diff`, or
+     `shasum`, does not count.
+3. If a counted path matches `docs/superpowers/specs/*.md` or
    `docs/superpowers/plans/*.md`, print exactly this JSON and exit 0:
 
    ```json
@@ -76,10 +79,10 @@ tool call: on any parse error it exits 0 silently.
 
 **Known limitation.** The Bash case is a string match on the command text, not
 a file event. A command that writes a spec indirectly, such as a script that
-takes the path from a variable, is not detected. This is acceptable: the
-superpowers skills write specs and plans with Write, and auto mode's
-preference for Bash produces heredocs and redirects, which the string match
-does catch.
+takes the path from a variable or a Python heredoc that opens the file, is
+not detected. This is acceptable: the superpowers skills write specs and
+plans with Write, and auto mode's preference for Bash produces heredocs,
+redirects, and in-place `sed` edits, which the string match does catch.
 
 **Nudge text:**
 
@@ -176,20 +179,47 @@ resolve, ask George which spec the plan implements. Never match on filenames.
 - The absolute path of the document under review.
 - For a plan, the absolute path of its spec.
 
-Nothing else from the conversation is passed. The reviewer starts clean.
+Nothing from the parent conversation is passed. Isolation here means no
+inherited conversation history. The reviewer does inherit the applicable
+CLAUDE.md and project instructions, on purpose: they carry repository
+conventions and warnings, such as a framework version that differs from
+training data, that a feasibility check needs.
+
+**Recording what the reviewer sees.** Immediately before dispatch, the writer
+computes a SHA-256 of the document, and for a plan also of its spec, and
+states the hashes in the message that announces the dispatch. Hashing is a
+read, so it does not trigger the nudge. The hashes are compared twice: when
+the reviewer returns, and again before the editing pass. A mismatch means the
+reviewed version is stale. The writer says so and asks George whether to
+re-run the review or proceed on the stale findings. It does not proceed on
+its own.
 
 **Verifying independence.** When the agent returns, the writer reads the
-`Reviewer model:` line and compares it with its own model. The review counts
-only if:
+`Reviewer model:` line and compares model families with its own, fable
+against opus, not strings against strings, since the reviewer may name itself
+with an alias or a full model ID. The review counts only if:
 
 - The agent returned a complete report with that line present.
-- The reported model differs from the writer's model.
+- The reported family differs from the writer's family.
+- The document hashes still match.
 
-If either check fails, including an Agent call that errors, times out, or
+This check is a self-report by the reviewer, not a runtime attestation. It
+catches the obvious failure, a forced-model environment override, and a
+truncated return. It cannot catch a model that misreports itself. If the
+Agent tool result turns out to carry model metadata, that becomes the
+authoritative source and the self-report is a fallback; implementation
+checks this.
+
+If any check fails, including an Agent call that errors, times out, or
 returns truncated output, the writer tells George in one line that the
 cross-model review did not complete and why, and asks whether to retry or
 proceed without it. The writer never substitutes its own model and never
 presents a same-model review as cross-model.
+
+**Zero findings.** If the report has the model line and then says there is
+nothing to report, the writer relays that in one line, naming the reviewer
+model, and resumes the superpowers flow directly. No decisions are requested
+and no files are touched.
 
 ### 4. Triage
 
@@ -214,9 +244,8 @@ recent transcript so they survive context compaction.
 **Recovery.** If the writer cannot reconstruct George's decisions with
 certainty, after compaction or an interrupted session, it asks him to confirm
 the tally or restart triage. It does not guess. Before the editing pass, the
-writer re-reads the document and confirms it matches the version the reviewer
-saw. If it has changed, the writer says so and asks how
-to proceed.
+writer re-hashes the document and compares against the hash recorded at
+dispatch. If it has changed, the writer says so and asks how to proceed.
 
 **Editing pass.** After the last finding, the writer applies every accepted
 finding in a single pass, preserving exactly the decisions made. It then
@@ -244,11 +273,13 @@ No review log is written into the document.
    - `Edit` to a spec path: nudge JSON.
    - `Bash` with a heredoc targeting a spec path: nudge JSON.
    - `Bash` with a redirect targeting a plan path: nudge JSON.
+   - `Bash` with `tee` or `sed -i` on a spec path: nudge JSON.
    - An absolute path outside the current repository that still matches the
      directory pattern: nudge JSON.
    - A markdown file elsewhere, a non-markdown file inside the spec
-     directory, a Bash command that only reads a spec, and malformed JSON:
-     no output, exit 0.
+     directory, and malformed JSON: no output, exit 0.
+   - `Bash` commands that only read a spec: `cat`, `grep`, `git diff`, and
+     `shasum` on a spec path: no output, exit 0.
 2. **Doctor check.** `dotfiles-doctor` fails if
    `~/.claude/skills/cross-model-review/SKILL.md` or
    `~/.claude/agents/cross-model-reviewer.md` is missing, since chezmoi
@@ -266,8 +297,10 @@ No review log is written into the document.
    - Mixed accept and skip decisions in one triage; the editing pass applies
      only the accepted ones.
    - Edits from triage do not trigger a second review.
-   - A reviewer that returns zero findings ends with the one-line report and
-     no triage.
+   - A reviewer that returns zero findings ends with the one-line report,
+     no triage, and the superpowers flow resumes.
+   - Editing the spec while the reviewer is running produces a hash mismatch
+     and a stale-review question instead of triage.
    - With the subagent model force environment variable set to the writer's
      own model, the writer reports the review as not completed instead of
      presenting findings.
