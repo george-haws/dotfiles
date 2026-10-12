@@ -163,6 +163,11 @@ out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c '
 check_eq "zsh: lazy stubs and autoloads defined" "$out" "node: function yarn: function corepack: function extract: function c: function "
 # Task 2 (2026-10-04): tool integrations
 check_grep "tools: fzf guarded" "$P/.config/zsh/tools.zsh" 'commands\[fzf\]'
+check_fgrep "tools: fzf bindings only when stdin is a terminal" "$P/.config/zsh/tools.zsh" '[[ -t 0 ]] && source <(fzf --zsh)'
+# Without a terminal the shell must start silently: no fzf widgets, but the fzf
+# environment is still exported for fd-backed searches from scripts.
+out=$(env -i HOME="$h" TERM=xterm PATH=/usr/bin:/bin:/usr/sbin:/sbin zsh -i -c 'print -r -- "$(whence -w fzf-history-widget | tr -d " ")${+FZF_DEFAULT_COMMAND}"' 2>&1)
+check_eq "zsh: no fzf widgets and no noise without a terminal" "$out" "fzf-history-widget:none1"
 check_grep "tools: fzf zsh integration" "$P/.config/zsh/tools.zsh" 'source <\(fzf --zsh\)'
 check_grep "tools: fd drives fzf" "$P/.config/zsh/tools.zsh" "FZF_DEFAULT_COMMAND='fd "
 check_grep "tools: zoxide guarded" "$P/.config/zsh/tools.zsh" 'commands\[zoxide\].*zoxide init zsh'
