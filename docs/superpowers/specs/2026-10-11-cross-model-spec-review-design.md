@@ -1,7 +1,7 @@
 # Cross-model review of specs and plans
 
 **Date:** 2026-10-11
-**Status:** Approved design, revised after cross-model review, not yet implemented
+**Status:** Implemented 2026-10-11 on the cross-model-review branch and applied to George's machine; see Known deviations.
 
 ## Problem
 
@@ -318,6 +318,42 @@ No review log is written into the document.
 Reviewer launch failures and truncated output are not in the test plan
 because there is no reliable way to provoke them. Component 3 defines the
 behavior.
+
+## Known deviations
+
+1. The Agent tool result carries no model field (only agent id, token count,
+   tool uses, and duration), so the reviewer's self-reported `Reviewer model:`
+   line is the only automatic independence check; the `/tasks` view is the
+   manual confirmation. The smoke test from a fable parent returned
+   `Reviewer model: claude-opus-5-5`.
+2. The hook test `is_nudge` asserts the JSON structure, exit status, the
+   opening sentence, and five key phrases rather than the exact full JSON the
+   Testing section asks for.
+3. `RE_PATH` also matches nested paths such as
+   `docs/superpowers/specs/sub/x.md`; the spec's `specs/*.md` is read as "any
+   markdown under that directory".
+4. The hook's Bash matching does not detect writes into a spec path by `cp`,
+   `mv`, `git checkout --`, `git restore`, or `git mv`, nor `sed --in-place`;
+   and `perl -M...` can false-positive as an in-place edit. These join the
+   accepted limitations.
+5. `dotfiles-doctor` exits 1 on George's machine because of 14 failures
+   unrelated to this work (the Oct 4 Brewfile and CLI tools were never
+   applied; `dotfiles-capture` is not installed). The cross-model section
+   itself is all OK.
+6. The doctor's failure message points at this spec, but the verbatim bodies
+   of the two hand-managed files live in the plan
+   (`docs/superpowers/plans/2026-10-11-cross-model-spec-review.md`, Tasks 4
+   and 5); a fresh machine rebuilds them from there.
+7. The skill's stale-review wording offers "retry or proceed without it" where
+   this spec says "re-run the review or proceed on the stale findings"; the
+   skill is the stricter of the two and stands.
+8. End-to-end Steps 3, 4, and 5 of the plan's Task 6 (live triage with mixed
+   decisions, hash mismatch during review, forced-model environment variable)
+   need multi-turn sessions with George and have not been run; Steps 1, 2, 6,
+   and 7 passed on 2026-10-11.
+9. Subagent handling (the `agent_id` variant in Component 1) was added after
+   the final review found the hook firing inside subagents; it was not in the
+   original design.
 
 ## Out of scope
 
