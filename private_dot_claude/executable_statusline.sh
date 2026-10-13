@@ -62,12 +62,41 @@ doing_line() {
       end' 2>/dev/null
 }
 
+# Background subagents: the Agent call returns at once and the turn ends, so the tail
+# reads "Waiting for you" while they run. A launch with no <task-notification> naming
+# its tool-use id is still pending. Prints "agentId<TAB>launch epoch<TAB>description".
+pending_agents() {
+  perl -ne 'print if /async_launched|<tool-use-id>/' "$transcript" 2>/dev/null | jq -rs '
+    def epoch: (.timestamp // "") | sub("\\.[0-9]+Z$"; "Z") | (try fromdateiso8601 catch 0);
+    [ .[] | (.content // .message.content // "") | tostring
+      | scan("<tool-use-id>([^<]+)</tool-use-id>")[0] ] as $done
+    | .[] | select((.toolUseResult | objects | .status) == "async_launched")
+    | ([.message.content[]? | select(.type=="tool_result").tool_use_id] | first) as $id
+    | select($id != null and ($done | index($id) | not))
+    | "\(.toolUseResult.agentId)\t\(epoch)\t\(.toolUseResult.description // "")"' 2>/dev/null
+}
+
 started=""; now=""; doing=""; since=""
 if [ -f "$transcript" ]; then
   prompts=$(human_prompts)
   started=$(head -1 <<<"$prompts")
   now=$(tail -1 <<<"$prompts")
   IFS=$'\t' read -r doing since <<<"$(doing_line)"
+  if [ "$doing" = "Waiting for you" ]; then
+    # Skip agents whose transcript has been quiet for 15 minutes: the session was
+    # killed mid-run and no notification will ever arrive.
+    n=0; first_desc=""; first_ts=""
+    while IFS=$'\t' read -r aid ts desc; do
+      [ -z "$aid" ] && continue
+      f="${transcript%.jsonl}/subagents/agent-$aid.jsonl"
+      if [ -f "$f" ]; then last=$(stat -f %m "$f"); else last=$ts; fi
+      [ $(( $(date +%s) - last )) -gt 900 ] && continue
+      n=$((n+1))
+      if [ -z "$first_ts" ] || [ "$ts" -lt "$first_ts" ]; then first_ts=$ts; first_desc=$desc; fi
+    done <<<"$(pending_agents)"
+    if [ "$n" -eq 1 ]; then doing="Waiting on subagent: $first_desc"; since=$first_ts
+    elif [ "$n" -gt 1 ]; then doing="Waiting on $n subagents"; since=$first_ts; fi
+  fi
 fi
 
 max=110
