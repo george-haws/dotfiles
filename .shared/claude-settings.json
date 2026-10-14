@@ -21,6 +21,25 @@
             "command": "~/.claude/hooks/spec-review-nudge.sh"
           }
         ]
+      },
+      {
+        "matcher": "Skill",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/brainstorm-worktree.sh"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/brainstorm-worktree.sh"
+          }
+        ]
       }
     ]
   },
@@ -43,5 +62,8 @@
       "Edit(~/TODO.md)",
       "Write(~/TODO.md)"
     ]
+  },
+  "worktree": {
+    "baseRef": "fresh"
   }
 }
